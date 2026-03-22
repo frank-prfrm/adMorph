@@ -3,6 +3,8 @@
 
 let inspectionActive = false;
 let idCounter = 0;
+// Tracks the element currently shown in the highlighter (may differ from e.target)
+let highlightedEl = null;
 
 // ── Highlighter overlay ──────────────────────────────────────────────────────
 
@@ -24,18 +26,29 @@ chrome.runtime.onMessage.addListener((request) => {
 document.addEventListener('mousemove', (e) => {
   if (!inspectionActive) return;
 
-  const target = e.target;
-  if (target === highlighter) return;
+  const raw = e.target;
+  if (raw === highlighter) return;
 
-  const rect = target.getBoundingClientRect();
+  // Show the best container ancestor so the user sees the full ad, not a leaf element
+  highlightedEl = findBestContainer(raw);
+  const rect = highlightedEl.getBoundingClientRect();
+
+  // position:fixed coords are viewport-relative — do NOT add scrollY/scrollX
   highlighter.style.cssText = `
+    position: fixed;
     display: block;
     width: ${rect.width}px;
     height: ${rect.height}px;
-    top: ${rect.top + window.scrollY}px;
-    left: ${rect.left + window.scrollX}px;
+    top: ${rect.top}px;
+    left: ${rect.left}px;
+    pointer-events: none;
+    z-index: 2147483647;
+    box-sizing: border-box;
+    border: 2px solid #3b82f6;
+    background: rgba(59,130,246,0.08);
+    border-radius: 2px;
   `;
-  highlighter.dataset.tag = target.tagName.toLowerCase();
+  highlighter.dataset.tag = highlightedEl.tagName.toLowerCase();
 }, { passive: true });
 
 document.addEventListener('mouseleave', () => {
@@ -54,9 +67,37 @@ document.addEventListener('click', async (e) => {
   highlighter.style.display = 'none';
   chrome.storage.local.set({ inspectActive: false });
 
-  const adElements = await captureTree(e.target);
+  // Use what was shown in the highlighter, not the raw click target
+  const rootEl = highlightedEl || findBestContainer(e.target);
+  const adElements = await captureTree(rootEl);
   chrome.runtime.sendMessage({ action: 'open_editor', data: adElements });
 }, true);
+
+// ── Container heuristic ───────────────────────────────────────────────────────
+
+/**
+ * Walk UP from `el` to find a suitable ad container:
+ * an ancestor that has ≥2 children and a meaningful bounding box.
+ * Falls back to the direct parent if nothing better is found.
+ */
+function findBestContainer(el) {
+  // If the element already has multiple children it's a good root
+  if (el.children.length >= 2) return el;
+
+  let current = el.parentElement;
+  while (current && current !== document.body && current !== document.documentElement) {
+    const rect = current.getBoundingClientRect();
+    if (current.children.length >= 2 && rect.width >= 80 && rect.height >= 80) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+
+  // Fallback: at minimum use the direct parent so we don't capture bare <img>
+  return el.parentElement && el.parentElement !== document.body
+    ? el.parentElement
+    : el;
+}
 
 // ── Capture logic ────────────────────────────────────────────────────────────
 
