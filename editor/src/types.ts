@@ -1,5 +1,11 @@
 export type ElementType = 'text' | 'image' | 'button' | 'container';
 
+export interface CapturedAd {
+  id: string;
+  elements: AdElement[];
+  capturedAt: number;
+}
+
 export interface AdElementStyles {
   top: number;
   left: number;

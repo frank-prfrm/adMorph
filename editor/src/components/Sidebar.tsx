@@ -2,21 +2,23 @@ import { useAdStore } from '../store';
 import type { AdElementStyles } from '../types';
 
 export function Sidebar() {
-  const elements = useAdStore((s) => s.elements);
-  const selectedId = useAdStore((s) => s.selectedId);
+  const ads = useAdStore((s) => s.ads);
+  const selectedAdId = useAdStore((s) => s.selectedAdId);
+  const selectedElementId = useAdStore((s) => s.selectedElementId);
   const updateElement = useAdStore((s) => s.updateElement);
   const selectElement = useAdStore((s) => s.selectElement);
 
-  const selected = elements.find((el) => el.id === selectedId) ?? null;
+  const selectedAd = ads.find((a) => a.id === selectedAdId) ?? null;
+  const selected = selectedAd?.elements.find((el) => el.id === selectedElementId) ?? null;
 
   const updateStyle = (key: keyof AdElementStyles, value: string | number) => {
-    if (!selected) return;
-    updateElement(selected.id, { styles: { ...selected.styles, [key]: value } });
+    if (!selected || !selectedAdId) return;
+    updateElement(selectedAdId, selected.id, { styles: { ...selected.styles, [key]: value } });
   };
 
   const updateContent = (value: string) => {
-    if (!selected) return;
-    updateElement(selected.id, { content: value });
+    if (!selected || !selectedAdId) return;
+    updateElement(selectedAdId, selected.id, { content: value });
   };
 
   return (
@@ -33,18 +35,15 @@ export function Sidebar() {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
-          {/* Element info */}
           <div>
             <label className="field-label">Element</label>
             <div className="flex items-center gap-2">
               <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded font-mono">
                 {selected.type}
               </span>
-              <span className="text-xs text-slate-500 font-mono">{selected.id}</span>
             </div>
           </div>
 
-          {/* Content (text / image src) */}
           {(selected.type === 'text' || selected.type === 'button') && (
             <Field label="Content">
               <textarea
@@ -65,7 +64,6 @@ export function Sidebar() {
             </Field>
           )}
 
-          {/* Typography */}
           <Field label="Font Size">
             <input
               className="input"
@@ -81,21 +79,13 @@ export function Sidebar() {
               onChange={(e) => updateStyle('fontWeight', e.target.value)}
             >
               {['100', '200', '300', '400', '500', '600', '700', '800', '900', 'bold', 'normal'].map(
-                (w) => (
-                  <option key={w} value={w}>
-                    {w}
-                  </option>
-                )
+                (w) => <option key={w} value={w}>{w}</option>
               )}
             </select>
           </Field>
 
-          {/* Colors */}
           <Field label="Text Color">
-            <ColorInput
-              value={selected.styles.color}
-              onChange={(v) => updateStyle('color', v)}
-            />
+            <ColorInput value={selected.styles.color} onChange={(v) => updateStyle('color', v)} />
           </Field>
 
           <Field label="Background Color">
@@ -105,7 +95,6 @@ export function Sidebar() {
             />
           </Field>
 
-          {/* Shape */}
           <Field label="Border Radius">
             <input
               className="input"
@@ -114,7 +103,6 @@ export function Sidebar() {
             />
           </Field>
 
-          {/* Dimensions (read-only) */}
           <div>
             <label className="field-label">Dimensions (read-only)</label>
             <div className="grid grid-cols-2 gap-2 text-xs text-slate-400 font-mono bg-slate-800 rounded p-2">
@@ -127,41 +115,41 @@ export function Sidebar() {
 
           <button
             className="w-full text-xs text-slate-400 hover:text-slate-200 mt-2 py-1"
-            onClick={() => selectElement(null)}
+            onClick={() => selectElement(null, null)}
           >
             Deselect
           </button>
         </div>
       )}
 
-      {/* Element list */}
-      <div className="border-t border-slate-700">
-        <header className="px-4 py-2 flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-            Layers
-          </span>
-          <span className="text-xs text-slate-600">{elements.length}</span>
-        </header>
-        <ul className="max-h-40 overflow-y-auto">
-          {[...elements].reverse().map((el) => (
-            <li
-              key={el.id}
-              className={`px-4 py-1.5 text-xs cursor-pointer flex items-center gap-2 hover:bg-slate-800 ${
-                el.id === selectedId ? 'bg-slate-800 text-blue-400' : 'text-slate-400'
-              }`}
-              onClick={() => selectElement(el.id)}
-            >
-              <span className="w-16 shrink-0 font-mono text-slate-600">{el.type}</span>
-              <span className="truncate">{el.content || el.id}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {/* Layers panel for selected ad */}
+      {selectedAd && (
+        <div className="border-t border-slate-700">
+          <header className="px-4 py-2 flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Layers
+            </span>
+            <span className="text-xs text-slate-600">{selectedAd.elements.length}</span>
+          </header>
+          <ul className="max-h-40 overflow-y-auto">
+            {[...selectedAd.elements].reverse().map((el) => (
+              <li
+                key={el.id}
+                className={`px-4 py-1.5 text-xs cursor-pointer flex items-center gap-2 hover:bg-slate-800 ${
+                  el.id === selectedElementId ? 'bg-slate-800 text-blue-400' : 'text-slate-400'
+                }`}
+                onClick={() => selectElement(selectedAd.id, el.id)}
+              >
+                <span className="w-16 shrink-0 font-mono text-slate-600">{el.type}</span>
+                <span className="truncate">{el.content || el.id}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </aside>
   );
 }
-
-// ── Small helpers ──────────────────────────────────────────────────────────
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -173,7 +161,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function ColorInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  // Try to extract a usable hex value from css color strings for the color picker
   const getHex = (cssColor: string): string => {
     const match = cssColor.match(/#[0-9a-fA-F]{3,8}/);
     return match ? match[0] : '#000000';

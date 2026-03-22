@@ -1,42 +1,66 @@
 import { create } from 'zustand';
-import type { AdElement } from './types';
+import type { AdElement, CapturedAd } from './types';
 
 interface AdStore {
-  elements: AdElement[];
-  previousElements: AdElement[] | null;
-  selectedId: string | null;
+  ads: CapturedAd[];
+  previousAds: CapturedAd[] | null;
+  selectedAdId: string | null;
+  selectedElementId: string | null;
 
-  setElements: (elements: AdElement[]) => void;
-  updateElement: (id: string, patch: Partial<AdElement>) => void;
-  selectElement: (id: string | null) => void;
+  setAds: (ads: CapturedAd[]) => void;
+  addAd: (ad: CapturedAd) => void;
+  removeAd: (adId: string) => void;
+  updateElement: (adId: string, elementId: string, patch: Partial<AdElement>) => void;
+  selectElement: (adId: string | null, elementId: string | null) => void;
+  setAdElements: (adId: string, elements: AdElement[]) => void;
   undo: () => void;
 }
 
 export const useAdStore = create<AdStore>((set) => ({
-  elements: [],
-  previousElements: null,
-  selectedId: null,
+  ads: [],
+  previousAds: null,
+  selectedAdId: null,
+  selectedElementId: null,
 
-  setElements: (elements) =>
+  setAds: (ads) => set({ ads, selectedAdId: null, selectedElementId: null }),
+
+  addAd: (ad) =>
+    set((state) => ({ ads: [...state.ads, ad] })),
+
+  removeAd: (adId) =>
     set((state) => ({
-      previousElements: state.elements.length ? state.elements : null,
-      elements,
-      selectedId: null,
+      ads: state.ads.filter((a) => a.id !== adId),
+      selectedAdId: state.selectedAdId === adId ? null : state.selectedAdId,
+      selectedElementId: state.selectedAdId === adId ? null : state.selectedElementId,
     })),
 
-  updateElement: (id, patch) =>
+  updateElement: (adId, elementId, patch) =>
     set((state) => ({
-      elements: state.elements.map((el) =>
-        el.id === id ? { ...el, ...patch, styles: { ...el.styles, ...(patch.styles ?? {}) } } : el
+      ads: state.ads.map((ad) =>
+        ad.id !== adId
+          ? ad
+          : {
+              ...ad,
+              elements: ad.elements.map((el) =>
+                el.id !== elementId
+                  ? el
+                  : { ...el, ...patch, styles: { ...el.styles, ...(patch.styles ?? {}) } }
+              ),
+            }
       ),
     })),
 
-  selectElement: (id) => set({ selectedId: id }),
+  selectElement: (adId, elementId) =>
+    set({ selectedAdId: adId, selectedElementId: elementId }),
+
+  setAdElements: (adId, elements) =>
+    set((state) => ({
+      previousAds: state.ads,
+      ads: state.ads.map((ad) => (ad.id === adId ? { ...ad, elements } : ad)),
+    })),
 
   undo: () =>
     set((state) =>
-      state.previousElements
-        ? { elements: state.previousElements, previousElements: null }
-        : state
+      state.previousAds ? { ads: state.previousAds, previousAds: null } : state
     ),
 }));
