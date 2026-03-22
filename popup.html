@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ad-Morph</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 220px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+    }
+
+    header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    header h1 {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    header span {
+      color: #3b82f6;
+    }
+
+    .content {
+      padding: 14px 16px;
+    }
+
+    #inspect-btn {
+      width: 100%;
+      padding: 9px 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      background: #3b82f6;
+      color: #fff;
+    }
+
+    #inspect-btn:hover {
+      background: #2563eb;
+    }
+
+    #inspect-btn:active {
+      transform: scale(0.97);
+    }
+
+    #inspect-btn.active {
+      background: #ef4444;
+    }
+
+    #inspect-btn.active:hover {
+      background: #dc2626;
+    }
+
+    #status {
+      margin-top: 10px;
+      font-size: 11px;
+      color: #64748b;
+      min-height: 16px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ad<span>-Morph</span> Inspector</h1>
+  </header>
+  <div class="content">
+    <button id="inspect-btn">Inspect Ad</button>
+    <p id="status">Click an ad element on the page.</p>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
