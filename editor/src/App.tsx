@@ -1,12 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Settings } from 'lucide-react';
 import { useAdStore } from './store';
 import { loadAndMergeAds } from './loader';
 import { Canvas } from './components/Canvas';
 import { Sidebar } from './components/Sidebar';
 import { AiRefiner } from './components/AiRefiner';
+import { SettingsPanel } from './components/SettingsPanel/SettingsPanel';
+import { useSettings } from './hooks/useSettings';
 
 export default function App() {
   const setAds = useAdStore((s) => s.setAds);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { settings, updateSettings } = useSettings();
 
   useEffect(() => {
     const ads = loadAndMergeAds();
@@ -22,8 +27,17 @@ export default function App() {
           </span>
           <span className="text-xs text-slate-500">Editor</span>
         </div>
-        <div className="text-xs text-slate-500 hidden sm:block">
-          Capture ads with the Chrome extension · Click an element to edit · Use AI Refiner to restyle
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-slate-500 hidden sm:block">
+            Capture ads with the Chrome extension · Click an element to edit · Use AI Refiner to restyle
+          </div>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="text-slate-400 hover:text-slate-200 transition-colors"
+            title="AI Provider Settings"
+          >
+            <Settings size={16} />
+          </button>
         </div>
       </header>
 
@@ -35,9 +49,17 @@ export default function App() {
           <div className="flex-1 overflow-hidden">
             <Sidebar />
           </div>
-          <AiRefiner />
+          <AiRefiner settings={settings} />
         </div>
       </div>
+
+      {settingsOpen && (
+        <SettingsPanel
+          settings={settings}
+          onSave={updateSettings}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   );
 }

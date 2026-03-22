@@ -1,9 +1,15 @@
 import { useState } from 'react';
 import { Sparkles, Undo2, AlertCircle, Loader2 } from 'lucide-react';
 import { useAdStore } from '../store';
-import { refineAdWithAI, AiRefineError } from '../utils/openai';
+import { AiRefineError } from '../utils/openai';
+import { getProvider } from '../lib/llm/factory';
+import type { AppSettings } from '../lib/storage/settings';
 
-export function AiRefiner() {
+interface Props {
+  settings: AppSettings;
+}
+
+export function AiRefiner({ settings }: Props) {
   const ads = useAdStore((s) => s.ads);
   const previousAds = useAdStore((s) => s.previousAds);
   const selectedAdId = useAdStore((s) => s.selectedAdId);
@@ -11,23 +17,26 @@ export function AiRefiner() {
   const undo = useAdStore((s) => s.undo);
 
   const [prompt, setPrompt] = useState('');
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('admorph_openai_key') ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedAd = ads.find((a) => a.id === selectedAdId) ?? null;
+  const providerName = settings.llm.provider.charAt(0).toUpperCase() + settings.llm.provider.slice(1);
 
-  const saveKey = (key: string) => {
-    setApiKey(key);
-    localStorage.setItem('admorph_openai_key', key);
+  const isReady = () => {
+    const { llm } = settings;
+    if (llm.provider === 'ollama') return !!llm.ollamaBaseUrl;
+    if (llm.provider === 'anthropic') return !!llm.anthropicApiKey;
+    return !!llm.openaiApiKey;
   };
 
   const handleRefine = async () => {
-    if (!prompt.trim() || !apiKey.trim() || !selectedAd) return;
+    if (!prompt.trim() || !selectedAd || !isReady()) return;
     setLoading(true);
     setError(null);
     try {
-      const refined = await refineAdWithAI(selectedAd.elements, prompt, apiKey);
+      const provider = getProvider(settings);
+      const refined = await provider.refineAd(selectedAd.elements, prompt);
       setAdElements(selectedAd.id, refined);
       setPrompt('');
     } catch (err) {
@@ -37,7 +46,7 @@ export function AiRefiner() {
     }
   };
 
-  const canRefine = !loading && !!prompt.trim() && !!apiKey.trim() && !!selectedAd;
+  const canRefine = !loading && !!prompt.trim() && !!selectedAd && isReady();
 
   return (
     <section className="border-t border-slate-700 bg-slate-900 p-4 space-y-3">
@@ -60,17 +69,10 @@ export function AiRefiner() {
         <p className="text-xs text-slate-500">Click any element on an ad to select it first.</p>
       )}
 
-      <div>
-        <label className="field-label">OpenAI API Key</label>
-        <input
-          type="password"
-          className="input text-xs"
-          placeholder="sk-..."
-          value={apiKey}
-          onChange={(e) => saveKey(e.target.value)}
-        />
-        <p className="text-xs text-slate-600 mt-1">Stored in localStorage. Only sent to OpenAI.</p>
-      </div>
+      <p className="text-xs text-slate-500">
+        Provider: <span className="text-slate-300">{providerName}</span>
+        {!isReady() && <span className="text-yellow-500 ml-1">— configure in Settings</span>}
+      </p>
 
       <div>
         <label className="field-label">Request</label>
@@ -98,7 +100,7 @@ export function AiRefiner() {
         disabled={!canRefine}
       >
         {loading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-        {loading ? 'Refining…' : 'Refine Ad'}
+        {loading ? `Refining with ${providerName}…` : 'Refine Ad'}
       </button>
     </section>
   );
