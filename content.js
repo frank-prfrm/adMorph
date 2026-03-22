@@ -29,45 +29,57 @@ document.addEventListener('mousemove', (e) => {
   const raw = e.target;
   if (raw === highlighter) return;
 
-  // Show the best container ancestor so the user sees the full ad, not a leaf element
   highlightedEl = findBestContainer(raw);
-  const rect = highlightedEl.getBoundingClientRect();
-
-  // position:fixed coords are viewport-relative — do NOT add scrollY/scrollX
-  highlighter.style.cssText = `
-    position: fixed;
-    display: block;
-    width: ${rect.width}px;
-    height: ${rect.height}px;
-    top: ${rect.top}px;
-    left: ${rect.left}px;
-    pointer-events: none;
-    z-index: 2147483647;
-    box-sizing: border-box;
-    border: 2px solid #3b82f6;
-    background: rgba(59,130,246,0.08);
-    border-radius: 2px;
-  `;
-  highlighter.dataset.tag = highlightedEl.tagName.toLowerCase();
+  positionHighlighter(highlightedEl);
 }, { passive: true });
 
 document.addEventListener('mouseleave', () => {
   if (inspectionActive) highlighter.style.display = 'none';
 });
 
-// ── Click capture ────────────────────────────────────────────────────────────
+function positionHighlighter(el) {
+  const rect = el.getBoundingClientRect();
+  // Apply every layout property inline so page stylesheets can't override anything.
+  // position:fixed + viewport coords — do NOT add scrollY/scrollX.
+  const s = highlighter.style;
+  s.all = 'unset';           // reset any inherited/page styles
+  s.position = 'fixed';
+  s.display = 'block';
+  s.top = rect.top + 'px';
+  s.left = rect.left + 'px';
+  s.width = rect.width + 'px';
+  s.height = rect.height + 'px';
+  s.zIndex = '2147483647';
+  s.pointerEvents = 'none';
+  s.boxSizing = 'border-box';
+  s.border = '3px solid #3b82f6';
+  s.borderRadius = '3px';
+  // Solid semi-transparent fill so it's clearly visible over any background
+  s.background = 'rgba(59,130,246,0.25)';
+  s.outline = '1px dashed rgba(255,255,255,0.6)';
+  s.outlineOffset = '-4px';
+  highlighter.dataset.tag = el.tagName.toLowerCase();
+}
+
+// ── Click / mousedown capture ────────────────────────────────────────────────
+
+// Block mousedown too — many ads navigate on mousedown before click fires
+document.addEventListener('mousedown', (e) => {
+  if (!inspectionActive) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, true);
 
 document.addEventListener('click', async (e) => {
   if (!inspectionActive) return;
 
   e.preventDefault();
-  e.stopPropagation();
+  e.stopImmediatePropagation(); // stop same-element handlers, not just bubbling
 
   inspectionActive = false;
   highlighter.style.display = 'none';
   chrome.storage.local.set({ inspectActive: false });
 
-  // Use what was shown in the highlighter, not the raw click target
   const rootEl = highlightedEl || findBestContainer(e.target);
   const adElements = await captureTree(rootEl);
   chrome.runtime.sendMessage({ action: 'open_editor', data: adElements });
