@@ -82,7 +82,7 @@ function AdBlock({ ad, availableWidth, selectedElementId, onSelectElement, onRem
   const sorted = [...ad.elements].sort((a, b) => a.zIndex - b.zIndex);
 
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex items-center gap-3">
       {/* Outer clip-box: exact display dimensions so nothing bleeds out */}
       <div
         style={{ width: displayW, height: displayH, position: 'relative', flexShrink: 0 }}
@@ -121,7 +121,6 @@ function AdBlock({ ad, availableWidth, selectedElementId, onSelectElement, onRem
           e.stopPropagation();
           onRemove();
         }}
-        style={{ marginTop: 4 }}
         className="p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-950/40 transition-colors shrink-0"
       >
         <Trash2 size={18} />
