@@ -18,3 +18,9 @@ npm-debug.log*
 # Editor metadata
 .vscode/
 .idea/
+
+# Claude Code local files
+.claude/
+
+# Stale planning docs
+AD-MORPH-PLAN.md
