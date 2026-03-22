@@ -4,9 +4,6 @@ import { useAdStore } from '../store';
 import { CanvasElement } from './CanvasElement';
 import type { CapturedAd } from '../types';
 
-const CANVAS_W = 1080;
-const CANVAS_H = 1080;
-
 export function Canvas() {
   const ads = useAdStore((s) => s.ads);
   const removeAd = useAdStore((s) => s.removeAd);
@@ -15,13 +12,13 @@ export function Canvas() {
   const selectedElementId = useAdStore((s) => s.selectedElementId);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(0.5);
+  // Available pixel width for each ad canvas (excluding trash button + padding)
+  const [availableWidth, setAvailableWidth] = useState(600);
 
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
-      // Leave room for trash button (48px) + padding (64px each side)
-      const available = entry.contentRect.width - 48 - 64;
-      setScale(Math.min(available / CANVAS_W, 0.85));
+      // 48px trash button + 32px right gap + 64px left padding
+      setAvailableWidth(entry.contentRect.width - 48 - 32 - 64);
     });
     if (wrapperRef.current) observer.observe(wrapperRef.current);
     return () => observer.disconnect();
@@ -49,7 +46,7 @@ export function Canvas() {
           <AdBlock
             key={ad.id}
             ad={ad}
-            scale={scale}
+            availableWidth={availableWidth}
             selectedElementId={selectedAdId === ad.id ? selectedElementId : null}
             onSelectElement={(elId) => selectElement(ad.id, elId)}
             onRemove={() => removeAd(ad.id)}
@@ -64,35 +61,45 @@ export function Canvas() {
 
 interface AdBlockProps {
   ad: CapturedAd;
-  scale: number;
+  availableWidth: number;
   selectedElementId: string | null;
   onSelectElement: (id: string) => void;
   onRemove: () => void;
 }
 
-function AdBlock({ ad, scale, selectedElementId, onSelectElement, onRemove }: AdBlockProps) {
-  const sorted = [...ad.elements].sort((a, b) => a.zIndex - b.zIndex);
+function AdBlock({ ad, availableWidth, selectedElementId, onSelectElement, onRemove }: AdBlockProps) {
+  // The first element is always the captured root — its dimensions are the true ad size.
+  const root = ad.elements[0];
+  const adW = root ? Math.round(root.styles.width) : 1080;
+  const adH = root ? Math.round(root.styles.height) : 1080;
 
-  const displayW = Math.round(CANVAS_W * scale);
-  const displayH = Math.round(CANVAS_H * scale);
+  // Scale to fit available width, but never upscale beyond 1×
+  const scale = Math.min(availableWidth / adW, 1);
+
+  const displayW = Math.round(adW * scale);
+  const displayH = Math.round(adH * scale);
+
+  const sorted = [...ad.elements].sort((a, b) => a.zIndex - b.zIndex);
 
   return (
     <div className="flex items-start gap-3">
-      {/* Scaled canvas */}
+      {/* Outer clip-box: exact display dimensions so nothing bleeds out */}
       <div
         style={{ width: displayW, height: displayH, position: 'relative', flexShrink: 0 }}
-        onClick={(e) => e.stopPropagation()} // don't bubble to outer deselect handler
+        onClick={(e) => e.stopPropagation()}
       >
+        {/* Inner canvas at native size, scaled down via transform */}
         <div
           style={{
-            width: CANVAS_W,
-            height: CANVAS_H,
+            width: adW,
+            height: adH,
             transform: `scale(${scale})`,
             transformOrigin: 'top left',
             position: 'absolute',
             top: 0,
             left: 0,
             background: '#fff',
+            overflow: 'hidden',       // clip stray elements that fall outside ad bounds
             boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
           }}
         >
@@ -107,7 +114,7 @@ function AdBlock({ ad, scale, selectedElementId, onSelectElement, onRemove }: Ad
         </div>
       </div>
 
-      {/* Trash button — sits to the right of the canvas */}
+      {/* Trash button */}
       <button
         title="Delete this ad"
         onClick={(e) => {
