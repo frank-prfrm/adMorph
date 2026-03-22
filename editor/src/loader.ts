@@ -1,5 +1,27 @@
 import type { AdElement, CapturedAd } from './types';
 
+export function registerPostMessageListener(
+  onNewAd: (ad: CapturedAd, screenshot?: string) => void
+): () => void {
+  const handler = (event: MessageEvent) => {
+    if (event.data?.action !== 'adMorphData') return;
+    try {
+      const elements = event.data.elements as AdElement[];
+      if (!Array.isArray(elements) || elements.length === 0) return;
+      const adId = `ad-${Date.now()}`;
+      const prefixed = elements.map((el) => ({ ...el, id: `${adId}:${el.id}` }));
+      const newAd: CapturedAd = { id: adId, elements: prefixed, capturedAt: Date.now() };
+      const existing = loadStoredAds();
+      saveStoredAds([...existing, newAd]);
+      onNewAd(newAd, event.data.screenshot ?? undefined);
+    } catch {
+      // ignore malformed messages
+    }
+  };
+  window.addEventListener('message', handler);
+  return () => window.removeEventListener('message', handler);
+}
+
 const STORAGE_KEY = 'adMorphAds';
 
 /** Read all saved ads from localStorage. */
@@ -31,29 +53,27 @@ export function saveStoredAds(ads: CapturedAd[]): void {
  * If not found: return stored ads as-is.
  */
 export function loadAndMergeAds(): CapturedAd[] {
-  const existing = loadStoredAds();
-
   try {
     const params = new URLSearchParams(window.location.search);
     const encoded = params.get('data');
     if (encoded) {
+      // URL param means a fresh capture session — start clean so previous
+      // session's ads don't bleed back in.
       const json = decodeURIComponent(escape(atob(encoded)));
       const elements = JSON.parse(json) as AdElement[];
       if (Array.isArray(elements) && elements.length > 0) {
         const adId = `ad-${Date.now()}`;
-        // Prefix element IDs with the ad ID to avoid collisions across captures
         const prefixed = elements.map((el) => ({ ...el, id: `${adId}:${el.id}` }));
         const newAd: CapturedAd = { id: adId, elements: prefixed, capturedAt: Date.now() };
-        const updated = [...existing, newAd];
-        saveStoredAds(updated);
-        // Remove param so a page refresh doesn't re-add the same ad
+        saveStoredAds([newAd]);
         window.history.replaceState({}, '', window.location.pathname);
-        return updated;
+        return [newAd];
       }
     }
   } catch {
     // malformed data param — ignore
   }
 
-  return existing;
+  // No URL param: restore whatever was in localStorage (e.g. page refresh mid-session)
+  return loadStoredAds();
 }
