@@ -23,6 +23,27 @@ export function registerPostMessageListener(
 }
 
 const STORAGE_KEY = 'adMorphAds';
+const SCREENSHOTS_KEY = 'adMorphScreenshots';
+
+export function loadStoredScreenshots(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(SCREENSHOTS_KEY);
+    if (raw) return JSON.parse(raw) as Record<string, string>;
+  } catch { /* ignore */ }
+  return {};
+}
+
+export function saveStoredScreenshots(screenshots: Record<string, string>): void {
+  try {
+    localStorage.setItem(SCREENSHOTS_KEY, JSON.stringify(screenshots));
+  } catch { /* quota exceeded — screenshots are best-effort */ }
+}
+
+export function deleteStoredScreenshot(adId: string): void {
+  const screenshots = loadStoredScreenshots();
+  delete screenshots[adId];
+  saveStoredScreenshots(screenshots);
+}
 
 /** Read all saved ads from localStorage. */
 export function loadStoredAds(): CapturedAd[] {

@@ -20,35 +20,59 @@ Rules you MUST follow:
 3. Never add or remove elements from the array — the output array must have the same length and the same IDs in the same order.
 4. Return raw JSON only. No markdown fences. No explanation.`;
 
-export const EXTRACTION_SYSTEM_PROMPT = `You are a visual ad layout extractor. Analyze the advertisement image and extract every visible layer.
+export const EXTRACTION_SYSTEM_PROMPT = `You are a visual ad layout extractor. Your job is to identify and describe EVERY visible element in the advertisement image as a flat list of layers.
 
-Return ONLY valid JSON in this exact format:
+CRITICAL RULES — you MUST follow all of these:
+1. You MUST extract EVERY visible element: backgrounds, images, headlines, body text, logos, buttons, dividers, overlays. A typical ad has 5–15 elements. Never return fewer than 3.
+2. el-0 is always the root container: top=0, left=0, width=full ad width, height=full ad height, backgroundColor=dominant background color.
+3. Every other element is positioned absolutely inside the root. Measure top/left from the image's top-left corner in pixels.
+4. zIndex starts at 0 (root), increment by 1 per layer going forward.
+5. type must be one of: "container" (background/wrapper), "image" (photo/graphic/logo), "text" (any readable copy), "button" (CTA with label).
+6. content = exact visible text for text and button types. Empty string for container and image types.
+7. Colors must be hex (e.g. "#1a2b3c") or "transparent". Never use rgb() or named colors.
+8. fontSize includes the unit (e.g. "24px"). Estimate based on visual size relative to the ad dimensions.
+9. Return ONLY the JSON object. No markdown, no explanation, no extra text.
+
+Example of a correct response for a 300×250 ad:
 {
   "elements": [
     {
       "id": "el-0",
       "type": "container",
       "content": "",
-      "styles": {
-        "top": 0, "left": 0, "width": 300, "height": 250,
-        "backgroundColor": "#ffffff", "color": "#000000",
-        "fontSize": "16px", "fontWeight": "400",
-        "borderRadius": "0px", "backgroundImage": ""
-      },
+      "styles": { "top": 0, "left": 0, "width": 300, "height": 250, "backgroundColor": "#1a1a2e", "color": "#ffffff", "fontSize": "16px", "fontWeight": "400", "borderRadius": "0px", "backgroundImage": "" },
       "zIndex": 0
+    },
+    {
+      "id": "el-1",
+      "type": "image",
+      "content": "",
+      "styles": { "top": 0, "left": 0, "width": 300, "height": 160, "backgroundColor": "transparent", "color": "#ffffff", "fontSize": "16px", "fontWeight": "400", "borderRadius": "0px", "backgroundImage": "" },
+      "zIndex": 1
+    },
+    {
+      "id": "el-2",
+      "type": "text",
+      "content": "Summer Sale — Up to 50% Off",
+      "styles": { "top": 170, "left": 16, "width": 268, "height": 36, "backgroundColor": "transparent", "color": "#ffffff", "fontSize": "22px", "fontWeight": "700", "borderRadius": "0px", "backgroundImage": "" },
+      "zIndex": 2
+    },
+    {
+      "id": "el-3",
+      "type": "text",
+      "content": "Limited time only. Shop now and save big.",
+      "styles": { "top": 212, "left": 16, "width": 268, "height": 20, "backgroundColor": "transparent", "color": "#cccccc", "fontSize": "13px", "fontWeight": "400", "borderRadius": "0px", "backgroundImage": "" },
+      "zIndex": 3
+    },
+    {
+      "id": "el-4",
+      "type": "button",
+      "content": "Shop Now",
+      "styles": { "top": 206, "left": 190, "width": 94, "height": 32, "backgroundColor": "#e63946", "color": "#ffffff", "fontSize": "14px", "fontWeight": "600", "borderRadius": "6px", "backgroundImage": "" },
+      "zIndex": 4
     }
   ]
-}
-
-Rules:
-1. el-0 MUST be the root container: top=0, left=0, width=full ad width, height=full ad height
-2. Coordinates are pixels measured from the ad image's top-left corner
-3. zIndex = layer order, 0 = bottom; increment per layer
-4. type: "container" for backgrounds/wrappers, "text" for readable copy, "image" for photos/graphics, "button" for CTAs
-5. content = exact visible text for text/button; empty string for everything else
-6. backgroundColor and color = hex (e.g. "#1a2b3c") or "transparent"
-7. fontSize includes unit (e.g. "24px")
-8. Return NO markdown, NO explanation — only the JSON object.`;
+}`;
 
 export function parseExtractedElements(raw: string, providerName: string): AdElement[] {
   const cleaned = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();

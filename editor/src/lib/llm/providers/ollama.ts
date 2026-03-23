@@ -16,31 +16,42 @@ export class OllamaProvider implements LLMProvider {
     };
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const requestBody = {
+        model: this.config.model,
+        format: 'json',
+        stream: false,
+        options: { num_predict: 4096 },
+        messages: [
+          { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
+          userMsg,
+        ],
+      };
+      console.group(`[Ollama extractAd] attempt ${attempt + 1}`);
+      console.log('REQUEST →', JSON.stringify({ ...requestBody, messages: requestBody.messages.map(m => ({ ...m, images: (m as Record<string,unknown>).images ? ['<base64 truncated>'] : undefined })) }, null, 2));
+
       const response = await fetch(`${this.config.baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.config.model,
-          format: 'json',
-          stream: false,
-          messages: [
-            { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
-            userMsg,
-          ],
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
         const err = await response.text();
+        console.error('RESPONSE ERROR →', err);
+        console.groupEnd();
         throw new AiRefineError(`Ollama extraction error ${response.status}: ${err}`);
       }
 
       const data = await response.json();
       const raw = data.message?.content;
+      console.log('RESPONSE RAW →', raw);
+      console.groupEnd();
       if (!raw) throw new AiRefineError('Empty extraction response from Ollama.');
 
       try {
-        return parseExtractedElements(raw, 'Ollama');
+        const parsed = parseExtractedElements(raw, 'Ollama');
+        console.log('[Ollama extractAd] PARSED ELEMENTS →', JSON.parse(JSON.stringify(parsed)));
+        return parsed;
       } catch (err) {
         if (attempt === MAX_RETRIES) throw err;
       }
@@ -58,31 +69,41 @@ export class OllamaProvider implements LLMProvider {
     if (screenshotBase64) userMsg.images = [screenshotBase64];
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const requestBody = {
+        model: this.config.model,
+        format: 'json',
+        stream: false,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          userMsg,
+        ],
+      };
+      console.group(`[Ollama refineAd] attempt ${attempt + 1}`);
+      console.log('REQUEST →', JSON.stringify({ ...requestBody, messages: requestBody.messages.map(m => ({ ...m, images: (m as Record<string,unknown>).images ? ['<base64 truncated>'] : undefined })) }, null, 2));
+
       const response = await fetch(`${this.config.baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.config.model,
-          format: 'json',
-          stream: false,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            userMsg,
-          ],
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
         const err = await response.text();
+        console.error('RESPONSE ERROR →', err);
+        console.groupEnd();
         throw new AiRefineError(`Ollama API error ${response.status}: ${err}`);
       }
 
       const data = await response.json();
       const raw = data.message?.content;
+      console.log('RESPONSE RAW →', raw);
+      console.groupEnd();
       if (!raw) throw new AiRefineError('Empty response from Ollama.');
 
       try {
-        return parseAdElements(raw, elements, 'Ollama');
+        const parsed = parseAdElements(raw, elements, 'Ollama');
+        console.log('[Ollama refineAd] PARSED ELEMENTS →', JSON.parse(JSON.stringify(parsed)));
+        return parsed;
       } catch (err) {
         if (attempt === MAX_RETRIES) throw err;
       }

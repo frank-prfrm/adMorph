@@ -17,7 +17,8 @@ export function Canvas() {
 
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
-      setAvailableWidth(entry.contentRect.width - 48 - 32 - 64);
+      // Subtract only the px-8 canvas padding (32px each side = 64px)
+      setAvailableWidth(entry.contentRect.width - 64);
     });
     if (wrapperRef.current) observer.observe(wrapperRef.current);
     return () => observer.disconnect();
@@ -40,7 +41,7 @@ export function Canvas() {
       className="overflow-y-auto h-full bg-slate-900 px-8 py-10"
       onClick={() => selectElement(null, null)}
     >
-      <div className="flex flex-col gap-10">
+      <div className="flex flex-col gap-10 items-center">
         {ads.map((ad) => (
           <AdBlock
             key={ad.id}
@@ -112,10 +113,10 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, onSelect
   };
 
   return (
-    <div className="flex items-center gap-3">
+    <div style={{ position: 'relative', display: 'inline-block' }}>
       {/* Outer clip-box: display dimensions, toolbar is positioned here */}
       <div
-        style={{ width: displayW, height: displayH, position: 'relative', flexShrink: 0, overflow: 'hidden' }}
+        style={{ width: displayW, height: displayH, position: 'relative', overflow: 'hidden' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Inner canvas at native size, scaled via transform */}
@@ -180,13 +181,14 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, onSelect
         )}
       </div>
 
-      {/* Trash button */}
+      {/* Trash button — absolutely positioned top-right, outside the ad area */}
       <button
         title="Delete this ad"
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
-        className="p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-950/40 transition-colors shrink-0"
+        className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-950/40 transition-colors"
+        style={{ position: 'absolute', top: -32, right: 0, zIndex: 9998 }}
       >
-        <Trash2 size={18} />
+        <Trash2 size={15} />
       </button>
     </div>
   );

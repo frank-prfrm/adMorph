@@ -99,18 +99,18 @@ document.addEventListener('click', async (e) => {
 function findBestContainer(el) {
   const viewportW = window.innerWidth;
   const viewportH = window.innerHeight;
-  let best = null;
   let current = el;
   while (current && current !== document.body && current !== document.documentElement) {
     const rect = current.getBoundingClientRect();
     // Stop if this element is larger than 90% of the viewport (likely a page wrapper)
     if (rect.width > viewportW * 0.9 || rect.height > viewportH * 0.9) break;
+    // Return the first (innermost) element that looks like a self-contained ad block
     if (rect.width >= 80 && rect.height >= 80 && current.children.length >= 2) {
-      best = current;
+      return current;
     }
     current = current.parentElement;
   }
-  return best || el.parentElement || el;
+  return el.parentElement || el;
 }
 
 // ── Capture logic ────────────────────────────────────────────────────────────
@@ -132,7 +132,10 @@ async function captureElement(el, containerRect, idx) {
   const top = rect.top - containerRect.top;
   const left = rect.left - containerRect.left;
 
-  const bgImage = style.backgroundImage !== 'none' ? style.backgroundImage : undefined;
+  // Don't capture backgroundImage on elements that have <img> children —
+  // the child img elements will be captured separately, avoiding ghost doubles.
+  const hasImgChild = el.querySelector('img') !== null;
+  const bgImage = !hasImgChild && style.backgroundImage !== 'none' ? style.backgroundImage : undefined;
   const resolvedBgImage = bgImage ? await resolveBgImage(bgImage) : undefined;
   const src = await resolveImageSrc(el);
 

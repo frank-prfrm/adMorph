@@ -49,7 +49,8 @@ export function CanvasElement({
     fontFamily: styles.fontFamily,
     fontWeight: styles.fontWeight,
     borderRadius: styles.borderRadius,
-    backgroundImage: styles.backgroundImage,
+    // image type renders via <img> tag — don't also apply backgroundImage or you get ghosting
+    backgroundImage: type === 'image' ? undefined : styles.backgroundImage,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     opacity: styles.opacity ? parseFloat(styles.opacity) : 1,
