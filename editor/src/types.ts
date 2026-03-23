@@ -3,6 +3,7 @@ export type ElementType = 'text' | 'image' | 'button' | 'container';
 export interface CapturedAd {
   id: string;
   elements: AdElement[];
+  originalElements: AdElement[];
   capturedAt: number;
 }
 

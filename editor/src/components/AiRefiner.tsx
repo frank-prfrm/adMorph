@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Sparkles, Undo2, AlertCircle, Loader2 } from 'lucide-react';
+import { Sparkles, Undo2, AlertCircle, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import html2canvas from 'html2canvas';
 import { useAdStore } from '../store';
 import { AiRefineError } from '../utils/openai';
 import { getProvider } from '../lib/llm/factory';
@@ -19,6 +20,7 @@ export function AiRefiner({ settings }: Props) {
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [jsonOpen, setJsonOpen] = useState(false);
 
   const selectedAd = ads.find((a) => a.id === selectedAdId) ?? null;
   const providerName = settings.llm.provider.charAt(0).toUpperCase() + settings.llm.provider.slice(1);
@@ -35,8 +37,16 @@ export function AiRefiner({ settings }: Props) {
     setLoading(true);
     setError(null);
     try {
+      let screenshotBase64: string | undefined;
+      if (settings.llm.provider === 'ollama') {
+        const el = document.querySelector<HTMLElement>(`[data-ad-id="${selectedAd.id}"]`);
+        if (el) {
+          const cvs = await html2canvas(el, { useCORS: true, scale: 1 });
+          screenshotBase64 = cvs.toDataURL('image/jpeg', 0.85).split(',')[1];
+        }
+      }
       const provider = getProvider(settings);
-      const refined = await provider.refineAd(selectedAd.elements, prompt);
+      const refined = await provider.refineAd(selectedAd.elements, prompt, screenshotBase64);
       setAdElements(selectedAd.id, refined);
       setPrompt('');
     } catch (err) {
@@ -73,6 +83,24 @@ export function AiRefiner({ settings }: Props) {
         Provider: <span className="text-slate-300">{providerName}</span>
         {!isReady() && <span className="text-yellow-500 ml-1">— configure in Settings</span>}
       </p>
+
+      {/* JSON preview — lets user verify edits are captured before sending to AI */}
+      {selectedAd && (
+        <div>
+          <button
+            className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            onClick={() => setJsonOpen((o) => !o)}
+          >
+            {jsonOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+            Verify JSON ({selectedAd.elements.length} elements)
+          </button>
+          {jsonOpen && (
+            <pre className="mt-1.5 text-xs bg-slate-800 border border-slate-700 rounded p-2 overflow-auto max-h-40 text-slate-400 leading-relaxed">
+              {JSON.stringify(selectedAd.elements, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
 
       <div>
         <label className="field-label">Request</label>

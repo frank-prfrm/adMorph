@@ -1,22 +1,100 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Settings } from 'lucide-react';
 import { useAdStore } from './store';
-import { loadAndMergeAds } from './loader';
+import { loadAndMergeAds, registerPostMessageListener } from './loader';
 import { Canvas } from './components/Canvas';
 import { Sidebar } from './components/Sidebar';
 import { AiRefiner } from './components/AiRefiner';
 import { SettingsPanel } from './components/SettingsPanel/SettingsPanel';
 import { useSettings } from './hooks/useSettings';
+import { getProvider } from './lib/llm/factory';
+import { AiRefineError } from './utils/openai';
+import type { CapturedAd } from './types';
 
 export default function App() {
   const setAds = useAdStore((s) => s.setAds);
+  const addAd = useAdStore((s) => s.addAd);
+  const setAdElements = useAdStore((s) => s.setAdElements);
+  const setAdExtracting = useAdStore((s) => s.setAdExtracting);
+  const setAdExtractionError = useAdStore((s) => s.setAdExtractionError);
+  const setAdScreenshot = useAdStore((s) => s.setAdScreenshot);
+  const reExtractRequestId = useAdStore((s) => s.reExtractRequestId);
+  const clearReExtractRequest = useAdStore((s) => s.clearReExtractRequest);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { settings, updateSettings } = useSettings();
 
+  // ── Vision extraction ──────────────────────────────────────────────────────
+  // When a screenshot is available for a newly captured ad, run the vision
+  // model to produce a semantically accurate AdElement[] with real bounding
+  // boxes — replacing the DOM-derived quick-preview elements.
+
+  const runExtraction = useCallback(async (ad: CapturedAd, screenshot: string) => {
+    const adW = ad.elements[0]?.styles.width ?? 300;
+    const adH = ad.elements[0]?.styles.height ?? 250;
+    setAdExtracting(ad.id, true);
+    try {
+      const provider = getProvider(settings);
+      const extracted = await provider.extractAd(screenshot, adW, adH);
+      // Only apply if the model returned more than just the root container —
+      // a single-element result means extraction didn't really work; keep the DOM capture.
+      if (extracted.length > 1) {
+        setAdElements(ad.id, extracted);
+      } else {
+        setAdExtractionError(ad.id, 'Extraction returned only the root container — keeping original elements.');
+      }
+    } catch (err) {
+      const msg = err instanceof AiRefineError ? err.message : String(err);
+      console.warn('[adMorph] Vision extraction failed:', msg);
+      setAdExtractionError(ad.id, msg);
+    } finally {
+      setAdExtracting(ad.id, false);
+    }
+  }, [settings, setAdElements, setAdExtracting, setAdExtractionError]);
+
+  // ── Initial load ───────────────────────────────────────────────────────────
   useEffect(() => {
     const ads = loadAndMergeAds();
     if (ads.length > 0) setAds(ads);
   }, [setAds]);
+
+  // ── postMessage: full payload (existing tab) ───────────────────────────────
+  useEffect(() => {
+    return registerPostMessageListener((ad, screenshot) => {
+      addAd(ad);
+      if (screenshot) {
+        setAdScreenshot(ad.id, screenshot);
+        runExtraction(ad, screenshot);
+      }
+    });
+  }, [addAd, runExtraction, setAdScreenshot]);
+
+  // ── postMessage: screenshot-only (new tab, arrives after page load) ────────
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.action !== 'adMorphScreenshot') return;
+      const screenshot = event.data.screenshot as string | null;
+      if (!screenshot) return;
+      // Associate with the most recently added ad (the one loaded from URL param)
+      const ads = useAdStore.getState().ads;
+      const lastAd = ads[ads.length - 1];
+      if (lastAd) {
+        setAdScreenshot(lastAd.id, screenshot);
+        runExtraction(lastAd, screenshot);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [runExtraction]);
+
+  // ── Re-extract on demand ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!reExtractRequestId) return;
+    clearReExtractRequest();
+    const state = useAdStore.getState();
+    const ad = state.ads.find((a) => a.id === reExtractRequestId);
+    const screenshot = state.adScreenshots[reExtractRequestId];
+    if (ad && screenshot) runExtraction(ad, screenshot);
+  }, [reExtractRequestId, clearReExtractRequest, runExtraction]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-950">

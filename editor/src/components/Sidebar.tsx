@@ -1,5 +1,7 @@
+import { useState, useEffect, useRef } from 'react';
+import { Copy, Check, X, Braces, RefreshCw } from 'lucide-react';
 import { useAdStore } from '../store';
-import type { AdElementStyles } from '../types';
+import type { AdElementStyles, CapturedAd } from '../types';
 
 export function Sidebar() {
   const ads = useAdStore((s) => s.ads);
@@ -7,9 +9,21 @@ export function Sidebar() {
   const selectedElementId = useAdStore((s) => s.selectedElementId);
   const updateElement = useAdStore((s) => s.updateElement);
   const selectElement = useAdStore((s) => s.selectElement);
+  const extractingAdIds = useAdStore((s) => s.extractingAdIds);
+  const extractionErrors = useAdStore((s) => s.extractionErrors);
+  const clearAdExtractionError = useAdStore((s) => s.clearAdExtractionError);
+  const revertAd = useAdStore((s) => s.revertAd);
+  const requestReExtract = useAdStore((s) => s.requestReExtract);
+  const adScreenshots = useAdStore((s) => s.adScreenshots);
 
   const selectedAd = ads.find((a) => a.id === selectedAdId) ?? null;
   const selected = selectedAd?.elements.find((el) => el.id === selectedElementId) ?? null;
+  // For layers/banner: use selected ad if available, otherwise fall back to most recent ad
+  const activeAd = selectedAd ?? ads[ads.length - 1] ?? null;
+  const isExtracting = !!activeAd && extractingAdIds.includes(activeAd.id);
+  const extractionError = activeAd ? (extractionErrors[activeAd.id] ?? null) : null;
+
+  const [jsonOpen, setJsonOpen] = useState(false);
 
   const updateStyle = (key: keyof AdElementStyles, value: string | number) => {
     if (!selected || !selectedAdId) return;
@@ -29,12 +43,24 @@ export function Sidebar() {
         </h2>
       </header>
 
+      {/* Extraction status banner */}
+      {activeAd && (
+        <ExtractionBanner
+          adId={activeAd.id}
+          isExtracting={isExtracting}
+          error={extractionError}
+          onDismissError={() => clearAdExtractionError(activeAd.id)}
+        />
+      )}
+
       {!selected ? (
         <div className="flex-1 flex items-center justify-center text-slate-500 text-sm px-4 text-center">
-          Click an element on the canvas to edit its properties.
+          {isExtracting
+            ? 'AI is extracting elements…'
+            : 'Click an element on the canvas to edit its properties.'}
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        <div className={`flex-1 overflow-y-auto p-4 space-y-5 ${isExtracting ? 'opacity-40 pointer-events-none' : ''}`}>
           <div>
             <label className="field-label">Element</label>
             <div className="flex items-center gap-2">
@@ -122,23 +148,48 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* Layers panel for selected ad */}
-      {selectedAd && (
+      {/* Layers panel — shows as soon as any ad exists */}
+      {activeAd && (
         <div className="border-t border-slate-700">
           <header className="px-4 py-2 flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Layers
             </span>
-            <span className="text-xs text-slate-600">{selectedAd.elements.length}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-600">{activeAd.elements.length}</span>
+              {adScreenshots[activeAd.id] && !isExtracting && (
+                <button
+                  title="Re-run AI extraction"
+                  className="text-slate-500 hover:text-blue-400 transition-colors"
+                  onClick={() => requestReExtract(activeAd.id)}
+                >
+                  <RefreshCw size={13} />
+                </button>
+              )}
+              <button
+                title="Revert to original captured elements"
+                className="text-xs text-slate-500 hover:text-amber-400 transition-colors"
+                onClick={() => revertAd(activeAd.id)}
+              >
+                Revert
+              </button>
+              <button
+                title="View JSON"
+                className="text-slate-500 hover:text-slate-200 transition-colors"
+                onClick={() => setJsonOpen(true)}
+              >
+                <Braces size={13} />
+              </button>
+            </div>
           </header>
           <ul className="max-h-40 overflow-y-auto">
-            {[...selectedAd.elements].reverse().map((el) => (
+            {[...activeAd.elements].reverse().map((el) => (
               <li
                 key={el.id}
                 className={`px-4 py-1.5 text-xs cursor-pointer flex items-center gap-2 hover:bg-slate-800 ${
                   el.id === selectedElementId ? 'bg-slate-800 text-blue-400' : 'text-slate-400'
                 }`}
-                onClick={() => selectElement(selectedAd.id, el.id)}
+                onClick={() => selectElement(activeAd.id, el.id)}
               >
                 <span className="w-16 shrink-0 font-mono text-slate-600">{el.type}</span>
                 <span className="truncate">{el.content || el.id}</span>
@@ -147,9 +198,121 @@ export function Sidebar() {
           </ul>
         </div>
       )}
+
+      {/* JSON viewer modal */}
+      {jsonOpen && activeAd && (
+        <JsonModal ad={activeAd} onClose={() => setJsonOpen(false)} />
+      )}
     </aside>
   );
 }
+
+// ── Extraction status banner ──────────────────────────────────────────────────
+
+function ExtractionBanner({
+  adId, isExtracting, error, onDismissError,
+}: {
+  adId: string;
+  isExtracting: boolean;
+  error: string | null;
+  onDismissError: () => void;
+}) {
+  const [justFinished, setJustFinished] = useState(false);
+  const prevRef = useRef(isExtracting);
+
+  useEffect(() => {
+    if (prevRef.current && !isExtracting && !error) {
+      setJustFinished(true);
+      const t = setTimeout(() => setJustFinished(false), 3000);
+      return () => clearTimeout(t);
+    }
+    prevRef.current = isExtracting;
+  }, [isExtracting, error, adId]);
+
+  if (isExtracting) {
+    return (
+      <div className="flex items-center gap-2 px-4 py-2 bg-blue-950/50 border-b border-blue-800/40 text-xs text-blue-300">
+        <span
+          className="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin shrink-0"
+          style={{ animationDuration: '0.7s' }}
+        />
+        AI extracting elements…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-start justify-between gap-2 px-4 py-2 bg-red-950/50 border-b border-red-800/40 text-xs text-red-300">
+        <span className="break-all">{error}</span>
+        <button className="shrink-0 text-red-400 hover:text-red-200 ml-1" onClick={onDismissError}>
+          <X size={11} />
+        </button>
+      </div>
+    );
+  }
+
+  if (justFinished) {
+    return (
+      <div className="flex items-center gap-2 px-4 py-2 bg-green-950/50 border-b border-green-800/40 text-xs text-green-300">
+        <span className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+        Extraction complete — ready to edit
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ── JSON viewer modal ─────────────────────────────────────────────────────────
+
+function JsonModal({ ad, onClose }: { ad: CapturedAd; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const json = JSON.stringify(ad.elements, null, 2);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(json).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
+      <div
+        className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl flex flex-col"
+        style={{ width: 'min(720px, 90vw)', maxHeight: '80vh' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-700 shrink-0">
+          <span className="text-sm font-semibold text-slate-200">
+            Elements JSON
+            <span className="ml-2 text-xs font-normal text-slate-500">
+              {ad.elements.length} element{ad.elements.length !== 1 ? 's' : ''}
+            </span>
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+              onClick={handleCopy}
+            >
+              {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+            <button className="text-slate-400 hover:text-slate-200" onClick={onClose}>
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+        <pre className="flex-1 overflow-auto p-5 text-xs text-slate-300 leading-relaxed font-mono">
+          {json}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

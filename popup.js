@@ -16,7 +16,8 @@ btn.addEventListener('click', async () => {
   isActive = !isActive;
   await chrome.storage.local.set({ inspectActive: isActive });
 
-  chrome.tabs.sendMessage(tab.id, { action: 'toggle_inspect', active: isActive });
+  chrome.tabs.sendMessage(tab.id, { action: 'toggle_inspect', active: isActive })
+    .catch(() => {}); // content script not present on this tab (system pages, editor, etc.)
   updateUI();
 
   if (isActive) window.close(); // close popup so user can hover the page

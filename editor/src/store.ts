@@ -1,11 +1,16 @@
 import { create } from 'zustand';
 import type { AdElement, CapturedAd } from './types';
+import { saveStoredAds, loadStoredScreenshots, saveStoredScreenshots, deleteStoredScreenshot } from './loader';
 
 interface AdStore {
   ads: CapturedAd[];
   previousAds: CapturedAd[] | null;
   selectedAdId: string | null;
   selectedElementId: string | null;
+  extractingAdIds: string[];
+  extractionErrors: Record<string, string>;
+  adScreenshots: Record<string, string>;
+  reExtractRequestId: string | null;
 
   setAds: (ads: CapturedAd[]) => void;
   addAd: (ad: CapturedAd) => void;
@@ -13,6 +18,13 @@ interface AdStore {
   updateElement: (adId: string, elementId: string, patch: Partial<AdElement>) => void;
   selectElement: (adId: string | null, elementId: string | null) => void;
   setAdElements: (adId: string, elements: AdElement[]) => void;
+  revertAd: (adId: string) => void;
+  setAdExtracting: (adId: string, extracting: boolean) => void;
+  setAdExtractionError: (adId: string, error: string) => void;
+  clearAdExtractionError: (adId: string) => void;
+  setAdScreenshot: (adId: string, screenshot: string) => void;
+  requestReExtract: (adId: string) => void;
+  clearReExtractRequest: () => void;
   undo: () => void;
 }
 
@@ -21,22 +33,46 @@ export const useAdStore = create<AdStore>((set) => ({
   previousAds: null,
   selectedAdId: null,
   selectedElementId: null,
+  extractingAdIds: [],
+  extractionErrors: {},
+  adScreenshots: loadStoredScreenshots(),
+  reExtractRequestId: null,
 
-  setAds: (ads) => set({ ads, selectedAdId: null, selectedElementId: null }),
+  setAds: (ads) => {
+    const hydrated = ads.map((ad) => ({
+      ...ad,
+      originalElements: ad.originalElements ?? [...ad.elements],
+    }));
+    saveStoredAds(hydrated);
+    set({ ads: hydrated, selectedAdId: null, selectedElementId: null });
+  },
 
   addAd: (ad) =>
-    set((state) => ({ ads: [...state.ads, ad] })),
+    set((state) => {
+      // Freeze originalElements at capture time — never overwritten after this
+      const frozenAd = { ...ad, originalElements: ad.originalElements ?? [...ad.elements] };
+      const ads = [...state.ads, frozenAd];
+      saveStoredAds(ads);
+      return { ads };
+    }),
 
   removeAd: (adId) =>
-    set((state) => ({
-      ads: state.ads.filter((a) => a.id !== adId),
-      selectedAdId: state.selectedAdId === adId ? null : state.selectedAdId,
-      selectedElementId: state.selectedAdId === adId ? null : state.selectedElementId,
-    })),
+    set((state) => {
+      const ads = state.ads.filter((a) => a.id !== adId);
+      saveStoredAds(ads);
+      deleteStoredScreenshot(adId);
+      const { [adId]: _, ...adScreenshots } = state.adScreenshots;
+      return {
+        ads,
+        adScreenshots,
+        selectedAdId: state.selectedAdId === adId ? null : state.selectedAdId,
+        selectedElementId: state.selectedAdId === adId ? null : state.selectedElementId,
+      };
+    }),
 
   updateElement: (adId, elementId, patch) =>
-    set((state) => ({
-      ads: state.ads.map((ad) =>
+    set((state) => {
+      const ads = state.ads.map((ad) =>
         ad.id !== adId
           ? ad
           : {
@@ -47,20 +83,62 @@ export const useAdStore = create<AdStore>((set) => ({
                   : { ...el, ...patch, styles: { ...el.styles, ...(patch.styles ?? {}) } }
               ),
             }
-      ),
-    })),
+      );
+      saveStoredAds(ads);
+      return { ads };
+    }),
 
   selectElement: (adId, elementId) =>
     set({ selectedAdId: adId, selectedElementId: elementId }),
 
   setAdElements: (adId, elements) =>
+    set((state) => {
+      // originalElements is never touched here — only elements changes
+      const ads = state.ads.map((ad) => (ad.id === adId ? { ...ad, elements } : ad));
+      saveStoredAds(ads);
+      return { previousAds: state.ads, ads };
+    }),
+
+  revertAd: (adId) =>
+    set((state) => {
+      const ads = state.ads.map((ad) =>
+        ad.id === adId ? { ...ad, elements: [...ad.originalElements] } : ad
+      );
+      saveStoredAds(ads);
+      return { previousAds: state.ads, ads };
+    }),
+
+  setAdExtracting: (adId, extracting) =>
     set((state) => ({
-      previousAds: state.ads,
-      ads: state.ads.map((ad) => (ad.id === adId ? { ...ad, elements } : ad)),
+      extractingAdIds: extracting
+        ? [...state.extractingAdIds.filter((id) => id !== adId), adId]
+        : state.extractingAdIds.filter((id) => id !== adId),
     })),
 
+  setAdExtractionError: (adId, error) =>
+    set((state) => ({ extractionErrors: { ...state.extractionErrors, [adId]: error } })),
+
+  clearAdExtractionError: (adId) =>
+    set((state) => {
+      const { [adId]: _, ...rest } = state.extractionErrors;
+      return { extractionErrors: rest };
+    }),
+
+  setAdScreenshot: (adId, screenshot) =>
+    set((state) => {
+      const adScreenshots = { ...state.adScreenshots, [adId]: screenshot };
+      saveStoredScreenshots(adScreenshots);
+      return { adScreenshots };
+    }),
+
+  requestReExtract: (adId) => set({ reExtractRequestId: adId }),
+
+  clearReExtractRequest: () => set({ reExtractRequestId: null }),
+
   undo: () =>
-    set((state) =>
-      state.previousAds ? { ads: state.previousAds, previousAds: null } : state
-    ),
+    set((state) => {
+      if (!state.previousAds) return state;
+      saveStoredAds(state.previousAds);
+      return { ads: state.previousAds, previousAds: null };
+    }),
 }));

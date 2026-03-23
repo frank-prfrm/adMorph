@@ -39,10 +39,8 @@ document.addEventListener('mouseleave', () => {
 
 function positionHighlighter(el) {
   const rect = el.getBoundingClientRect();
-  // Apply every layout property inline so page stylesheets can't override anything.
-  // position:fixed + viewport coords — do NOT add scrollY/scrollX.
   const s = highlighter.style;
-  s.all = 'unset';           // reset any inherited/page styles
+  s.all = 'unset';
   s.position = 'fixed';
   s.display = 'block';
   s.top = rect.top + 'px';
@@ -54,7 +52,6 @@ function positionHighlighter(el) {
   s.boxSizing = 'border-box';
   s.border = '3px solid #3b82f6';
   s.borderRadius = '3px';
-  // Solid semi-transparent fill so it's clearly visible over any background
   s.background = 'rgba(59,130,246,0.25)';
   s.outline = '1px dashed rgba(255,255,255,0.6)';
   s.outlineOffset = '-4px';
@@ -63,7 +60,6 @@ function positionHighlighter(el) {
 
 // ── Click / mousedown capture ────────────────────────────────────────────────
 
-// Block mousedown too — many ads navigate on mousedown before click fires
 document.addEventListener('mousedown', (e) => {
   if (!inspectionActive) return;
   e.preventDefault();
@@ -74,64 +70,59 @@ document.addEventListener('click', async (e) => {
   if (!inspectionActive) return;
 
   e.preventDefault();
-  e.stopImmediatePropagation(); // stop same-element handlers, not just bubbling
+  e.stopImmediatePropagation();
 
   inspectionActive = false;
   highlighter.style.display = 'none';
   chrome.storage.local.set({ inspectActive: false });
 
   const rootEl = highlightedEl || findBestContainer(e.target);
+  const containerRect = rootEl.getBoundingClientRect();
+
+  // DOM elements — used as an immediate preview while the vision model processes
   const adElements = await captureTree(rootEl);
-  chrome.runtime.sendMessage({ action: 'open_editor', data: adElements });
+
+  // Viewport-relative bounds so background.js can crop the screenshot
+  const viewRect = {
+    top: containerRect.top,
+    left: containerRect.left,
+    width: containerRect.width,
+    height: containerRect.height,
+    devicePixelRatio: window.devicePixelRatio || 1,
+  };
+
+  chrome.runtime.sendMessage({ action: 'open_editor', data: adElements, viewRect });
 }, true);
 
 // ── Container heuristic ───────────────────────────────────────────────────────
 
-/**
- * Walk UP from `el` to find a suitable ad container:
- * an ancestor that has ≥2 children and a meaningful bounding box.
- * Falls back to the direct parent if nothing better is found.
- */
 function findBestContainer(el) {
-  // If the element already has multiple children it's a good root
-  if (el.children.length >= 2) return el;
-
-  let current = el.parentElement;
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+  let current = el;
   while (current && current !== document.body && current !== document.documentElement) {
     const rect = current.getBoundingClientRect();
-    if (current.children.length >= 2 && rect.width >= 80 && rect.height >= 80) {
+    // Stop if this element is larger than 90% of the viewport (likely a page wrapper)
+    if (rect.width > viewportW * 0.9 || rect.height > viewportH * 0.9) break;
+    // Return the first (innermost) element that looks like a self-contained ad block
+    if (rect.width >= 80 && rect.height >= 80 && current.children.length >= 2) {
       return current;
     }
     current = current.parentElement;
   }
-
-  // Fallback: at minimum use the direct parent so we don't capture bare <img>
-  return el.parentElement && el.parentElement !== document.body
-    ? el.parentElement
-    : el;
+  return el.parentElement || el;
 }
 
 // ── Capture logic ────────────────────────────────────────────────────────────
 
-/**
- * Walk the subtree of `rootEl` and return a flat AdElement[] array.
- * All coordinates are relative to the root element's top-left corner.
- */
 async function captureTree(rootEl) {
   idCounter = 0;
   const containerRect = rootEl.getBoundingClientRect();
-
-  // Collect root + all descendants
   const allNodes = [rootEl, ...Array.from(rootEl.querySelectorAll('*'))];
-
   const elements = await Promise.all(
     allNodes.map((el, idx) => captureElement(el, containerRect, idx))
   );
-
-  // Filter out invisible / zero-size elements
-  return elements.filter(
-    (el) => el.styles.width > 0 && el.styles.height > 0
-  );
+  return elements.filter((el) => el.styles.width > 0 && el.styles.height > 0);
 }
 
 async function captureElement(el, containerRect, idx) {
@@ -141,9 +132,10 @@ async function captureElement(el, containerRect, idx) {
   const top = rect.top - containerRect.top;
   const left = rect.left - containerRect.left;
 
-  const bgImage = style.backgroundImage !== 'none' ? style.backgroundImage : undefined;
-
-  // Resolve blob: URLs to data URIs so they survive the tab change
+  // Don't capture backgroundImage on elements that have <img> children —
+  // the child img elements will be captured separately, avoiding ghost doubles.
+  const hasImgChild = el.querySelector('img') !== null;
+  const bgImage = !hasImgChild && style.backgroundImage !== 'none' ? style.backgroundImage : undefined;
   const resolvedBgImage = bgImage ? await resolveBgImage(bgImage) : undefined;
   const src = await resolveImageSrc(el);
 
@@ -184,14 +176,11 @@ async function resolveImageSrc(el) {
   if (el.tagName !== 'IMG') return null;
   const src = el.currentSrc || el.src;
   if (!src) return null;
-  if (src.startsWith('blob:') || src.startsWith('data:')) {
-    return blobUrlToDataUrl(src);
-  }
+  if (src.startsWith('blob:') || src.startsWith('data:')) return blobUrlToDataUrl(src);
   return src;
 }
 
 async function resolveBgImage(bgImage) {
-  // Extract url(...) value
   const match = bgImage.match(/url\(["']?(.+?)["']?\)/);
   if (!match) return bgImage;
   const url = match[1];
@@ -212,6 +201,6 @@ async function blobUrlToDataUrl(url) {
       reader.readAsDataURL(blob);
     });
   } catch {
-    return url; // return original on failure
+    return url;
   }
 }
