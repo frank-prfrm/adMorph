@@ -102,6 +102,7 @@ npm run dev      # starts at http://localhost:5173
 ### Vision Extraction (`App.tsx` + `lib/llm/`)
 - `runExtraction()` sends the cropped screenshot to the configured vision model (`extractAd()`)
 - Only applied if the model returns >1 element — single-element results (just the root container) are rejected and original DOM elements kept
+- During extraction the sidebar shows a centered spinner ("Analyzing image / Breaking the ad into editable components…"); a smaller blue banner also appears at the top for when a sidebar element is selected
 - Extraction errors surface in a red banner in the sidebar showing the actual error message
 - Re-extraction available any time via the ↺ button (uses the stored original screenshot)
 - `originalElements` is frozen at capture time — never overwritten by extraction or AI refine
@@ -111,7 +112,9 @@ npm run dev      # starts at http://localhost:5173
 - OpenAI/Anthropic: API key + model text inputs with periodic health check dot
 
 ### Editor Canvas (`Canvas.tsx`)
-- Each ad renders at its captured CSS pixel dimensions (from `elements[0]`)
+- Each ad renders at its captured CSS pixel dimensions (`rootW × rootH` from `elements[0]`) — exact match to the extension's `viewRect`
+- Canvas is clipped to that size via `overflow: hidden`; elements with negative coordinates are clipped, just like the browser does — prevents ghost backgrounds from out-of-bounds containers
+- While the vision model is running, the canvas shows the raw cropped screenshot instead of the DOM elements (no more white/blank flash during extraction)
 - Scales down only if the canvas is narrower than the ad; otherwise renders at 1:1
 - Trash button is absolutely positioned above the ad — not in the layout flow, invisible to html2canvas
 - `image` type elements render via `<img>` tag only — `backgroundImage` is suppressed to prevent ghosting

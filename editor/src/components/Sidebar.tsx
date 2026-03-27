@@ -54,10 +54,25 @@ export function Sidebar() {
       )}
 
       {!selected ? (
-        <div className="flex-1 flex items-center justify-center text-slate-500 text-sm px-4 text-center">
-          {isExtracting
-            ? 'AI is extracting elements…'
-            : 'Click an element on the canvas to edit its properties.'}
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-4">
+          {isExtracting ? (
+            <>
+              <div
+                className="w-9 h-9 rounded-full border-2 border-blue-400 border-t-transparent animate-spin"
+                style={{ animationDuration: '0.9s' }}
+              />
+              <div>
+                <p className="text-blue-300 font-medium text-sm">Analyzing image</p>
+                <p className="text-slate-500 text-xs mt-1 leading-relaxed">
+                  Breaking the ad into editable components…
+                </p>
+              </div>
+            </>
+          ) : (
+            <p className="text-slate-500 text-sm">
+              Click an element on the canvas to edit its properties.
+            </p>
+          )}
         </div>
       ) : (
         <div className={`flex-1 overflow-y-auto p-4 space-y-5 ${isExtracting ? 'opacity-40 pointer-events-none' : ''}`}>

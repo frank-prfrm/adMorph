@@ -11,6 +11,7 @@ export function Canvas() {
   const selectedAdId = useAdStore((s) => s.selectedAdId);
   const selectedElementId = useAdStore((s) => s.selectedElementId);
   const extractingAdIds = useAdStore((s) => s.extractingAdIds);
+  const adScreenshots = useAdStore((s) => s.adScreenshots);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [availableWidth, setAvailableWidth] = useState(600);
@@ -49,6 +50,7 @@ export function Canvas() {
             availableWidth={availableWidth}
             selectedElementId={selectedAdId === ad.id ? selectedElementId : null}
             isExtracting={extractingAdIds.includes(ad.id)}
+            screenshot={adScreenshots[ad.id]}
             onSelectElement={(elId) => selectElement(ad.id, elId)}
             onRemove={() => removeAd(ad.id)}
           />
@@ -65,11 +67,12 @@ interface AdBlockProps {
   availableWidth: number;
   selectedElementId: string | null;
   isExtracting: boolean;
+  screenshot?: string;
   onSelectElement: (id: string) => void;
   onRemove: () => void;
 }
 
-function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, onSelectElement, onRemove }: AdBlockProps) {
+function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, screenshot, onSelectElement, onRemove }: AdBlockProps) {
   const updateElement = useAdStore((s) => s.updateElement);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -83,14 +86,12 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, onSelect
   const rootW = root?.styles.width  ?? 1080;
   const rootH = root?.styles.height ?? 1080;
 
-  const minTop  = Math.min(0, ...ad.elements.map((e) => e.styles.top));
-  const minLeft = Math.min(0, ...ad.elements.map((e) => e.styles.left));
-
-  const offsetX = Math.round(-minLeft);
-  const offsetY = Math.round(-minTop);
-
-  const adW = Math.round(rootW + offsetX);
-  const adH = Math.round(rootH + offsetY);
+  // Use the root element's dimensions as the authoritative ad size — exactly
+  // what the extension's viewRect captured. Elements with negative coords are
+  // outside the ad's own bounds and get clipped by overflow:hidden, just like
+  // the browser does. No offset expansion to avoid ghost backgrounds.
+  const adW = Math.round(rootW);
+  const adH = Math.round(rootH);
 
   const scale = Math.min(availableWidth / adW, 1);
   const displayW = Math.round(adW * scale);
@@ -135,9 +136,15 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, onSelect
             boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
           }}
         >
-          {/* Offset wrapper: shifts elements into view when any have negative coords */}
-          <div style={{ position: 'absolute', top: offsetY, left: offsetX }}>
-            {sorted.map((el) => (
+          {/* During extraction show the raw screenshot so the canvas isn't blank */}
+          {isExtracting && screenshot ? (
+            <img
+              src={`data:image/jpeg;base64,${screenshot}`}
+              draggable={false}
+              style={{ width: '100%', height: '100%', display: 'block', userSelect: 'none' }}
+            />
+          ) : (
+            sorted.map((el) => (
               <CanvasElement
                 key={el.id}
                 element={el}
@@ -148,8 +155,8 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, onSelect
                 onEditCommit={handleEditCommit}
                 onImageSwap={handleImageSwap}
               />
-            ))}
-          </div>
+            ))
+          )}
         </div>
 
         {/* Extraction overlay */}
@@ -173,8 +180,8 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, onSelect
           <ElementToolbar
             element={selectedEl}
             scale={scale}
-            offsetX={offsetX}
-            offsetY={offsetY}
+            offsetX={0}
+            offsetY={0}
             displayH={displayH}
             onStyleChange={(key, value) => handleStyleChange(selectedEl.id, key, value)}
           />
