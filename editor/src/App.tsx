@@ -11,6 +11,7 @@ import { getProvider } from './lib/llm/factory';
 import { AiRefineError } from './utils/openai';
 import type { CapturedAd } from './types';
 
+
 export default function App() {
   const setAds = useAdStore((s) => s.setAds);
   const addAd = useAdStore((s) => s.addAd);

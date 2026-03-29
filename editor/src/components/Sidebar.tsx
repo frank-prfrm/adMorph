@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Copy, Check, X, Braces, RefreshCw } from 'lucide-react';
+import { Copy, Check, X, Braces, RefreshCw, ImagePlus } from 'lucide-react';
 import { useAdStore } from '../store';
 import type { AdElementStyles, CapturedAd } from '../types';
 
@@ -35,6 +35,21 @@ export function Sidebar() {
     updateElement(selectedAdId, selected.id, { content: value });
   };
 
+  const bgImageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBgImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selected || !selectedAdId) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      updateStyle('backgroundImage', `url("${reader.result as string}")`);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const isBackground = !!activeAd && selected?.id === activeAd.elements[0]?.id;
+
   return (
     <aside className="w-72 bg-slate-900 border-l border-slate-700 flex flex-col overflow-hidden">
       <header className="px-4 py-3 border-b border-slate-700">
@@ -68,10 +83,25 @@ export function Sidebar() {
                 </p>
               </div>
             </>
-          ) : (
-            <p className="text-slate-500 text-sm">
-              Click an element on the canvas to edit its properties.
+          ) : ads.length === 0 ? (
+            <p className="text-slate-600 text-xs leading-relaxed">
+              Capture an ad with the extension to get started.
             </p>
+          ) : (
+            <div className="flex flex-col items-center gap-4">
+              <p className="text-slate-500 text-sm">
+                Click an element on the canvas to edit its properties.
+              </p>
+              {activeAd && adScreenshots[activeAd.id] && (
+                <button
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-blue-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
+                  onClick={() => requestReExtract(activeAd.id)}
+                >
+                  <RefreshCw size={12} />
+                  Re-analyze with AI
+                </button>
+              )}
+            </div>
           )}
         </div>
       ) : (
@@ -80,7 +110,7 @@ export function Sidebar() {
             <label className="field-label">Element</label>
             <div className="flex items-center gap-2">
               <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded font-mono">
-                {selected.type}
+                {isBackground ? 'background' : selected.type}
               </span>
             </div>
           </div>
@@ -105,29 +135,33 @@ export function Sidebar() {
             </Field>
           )}
 
-          <Field label="Font Size">
-            <input
-              className="input"
-              value={selected.styles.fontSize}
-              onChange={(e) => updateStyle('fontSize', e.target.value)}
-            />
-          </Field>
+          {(selected.type === 'text' || selected.type === 'button') && (
+            <>
+              <Field label="Font Size">
+                <input
+                  className="input"
+                  value={selected.styles.fontSize}
+                  onChange={(e) => updateStyle('fontSize', e.target.value)}
+                />
+              </Field>
 
-          <Field label="Font Weight">
-            <select
-              className="input"
-              value={selected.styles.fontWeight ?? '400'}
-              onChange={(e) => updateStyle('fontWeight', e.target.value)}
-            >
-              {['100', '200', '300', '400', '500', '600', '700', '800', '900', 'bold', 'normal'].map(
-                (w) => <option key={w} value={w}>{w}</option>
-              )}
-            </select>
-          </Field>
+              <Field label="Font Weight">
+                <select
+                  className="input"
+                  value={selected.styles.fontWeight ?? '400'}
+                  onChange={(e) => updateStyle('fontWeight', e.target.value)}
+                >
+                  {['100', '200', '300', '400', '500', '600', '700', '800', '900', 'bold', 'normal'].map(
+                    (w) => <option key={w} value={w}>{w}</option>
+                  )}
+                </select>
+              </Field>
 
-          <Field label="Text Color">
-            <ColorInput value={selected.styles.color} onChange={(v) => updateStyle('color', v)} />
-          </Field>
+              <Field label="Text Color">
+                <ColorInput value={selected.styles.color} onChange={(v) => updateStyle('color', v)} />
+              </Field>
+            </>
+          )}
 
           <Field label="Background Color">
             <ColorInput
@@ -135,6 +169,33 @@ export function Sidebar() {
               onChange={(v) => updateStyle('backgroundColor', v)}
             />
           </Field>
+
+          {selected.type === 'container' && (
+            <Field label="Background Image">
+              <div className="flex gap-2">
+                <input
+                  className="input flex-1 text-xs"
+                  placeholder="url(…) or paste URL"
+                  value={selected.styles.backgroundImage ?? ''}
+                  onChange={(e) => updateStyle('backgroundImage', e.target.value)}
+                />
+                <button
+                  title="Upload image file"
+                  className="shrink-0 px-2 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white transition-colors"
+                  onClick={() => bgImageInputRef.current?.click()}
+                >
+                  <ImagePlus size={14} />
+                </button>
+                <input
+                  ref={bgImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleBgImageFile}
+                />
+              </div>
+            </Field>
+          )}
 
           <Field label="Border Radius">
             <input
@@ -198,18 +259,32 @@ export function Sidebar() {
             </div>
           </header>
           <ul className="max-h-40 overflow-y-auto">
-            {[...activeAd.elements].reverse().map((el) => (
-              <li
-                key={el.id}
-                className={`px-4 py-1.5 text-xs cursor-pointer flex items-center gap-2 hover:bg-slate-800 ${
-                  el.id === selectedElementId ? 'bg-slate-800 text-blue-400' : 'text-slate-400'
-                }`}
-                onClick={() => selectElement(activeAd.id, el.id)}
-              >
-                <span className="w-16 shrink-0 font-mono text-slate-600">{el.type}</span>
-                <span className="truncate">{el.content || el.id}</span>
-              </li>
-            ))}
+            {[...activeAd.elements].reverse().map((el) => {
+              const isBg = el.id === activeAd.elements[0]?.id;
+              return (
+                <li
+                  key={el.id}
+                  className={`px-4 py-1.5 text-xs cursor-pointer flex items-center gap-2 hover:bg-slate-800 ${
+                    el.id === selectedElementId ? 'bg-slate-800 text-blue-400' : 'text-slate-400'
+                  }`}
+                  onClick={() => selectElement(activeAd.id, el.id)}
+                >
+                  <span className="w-16 shrink-0 font-mono text-slate-600">
+                    {isBg ? 'bg' : el.type}
+                  </span>
+                  {isBg
+                    ? <span className="flex items-center gap-1.5 truncate">
+                        <span
+                          className="w-3 h-3 rounded-sm shrink-0 border border-slate-600"
+                          style={{ background: el.styles.backgroundColor }}
+                        />
+                        Background
+                      </span>
+                    : <span className="truncate">{el.content || el.id}</span>
+                  }
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

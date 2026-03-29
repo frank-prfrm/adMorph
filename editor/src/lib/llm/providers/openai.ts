@@ -1,6 +1,6 @@
 import type { AdElement } from '../../../types';
 import { AiRefineError } from '../../../utils/openai';
-import { SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, parseAdElements, parseExtractedElements } from '../shared';
+import { SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, parseAdElements, parseExtractedElements, pctToPixels } from '../shared';
 import type { LLMProvider } from '../provider';
 
 export class OpenAIProvider implements LLMProvider {
@@ -45,7 +45,7 @@ export class OpenAIProvider implements LLMProvider {
     const raw = data.choices?.[0]?.message?.content;
     if (!raw) throw new AiRefineError('Empty extraction response from OpenAI.');
 
-    return parseExtractedElements(raw, 'OpenAI');
+    return pctToPixels(parseExtractedElements(raw, 'OpenAI'), adWidth, adHeight);
   }
 
   async refineAd(elements: AdElement[], userRequest: string, _screenshotBase64?: string): Promise<AdElement[]> {

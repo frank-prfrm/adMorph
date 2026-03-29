@@ -93,8 +93,15 @@ export const useAdStore = create<AdStore>((set) => ({
 
   setAdElements: (adId, elements) =>
     set((state) => {
-      // originalElements is never touched here — only elements changes
-      const ads = state.ads.map((ad) => (ad.id === adId ? { ...ad, elements } : ad));
+      // originalElements is never touched here — only elements changes.
+      // Always prepend the original root as the background layer so it
+      // survives AI extraction (which produces entirely new element IDs).
+      const ad = state.ads.find((a) => a.id === adId);
+      const root = ad?.originalElements[0];
+      const withBackground = root
+        ? [{ ...root, zIndex: 0 }, ...elements]
+        : elements;
+      const ads = state.ads.map((a) => (a.id === adId ? { ...a, elements: withBackground } : a));
       saveStoredAds(ads);
       return { previousAds: state.ads, ads };
     }),

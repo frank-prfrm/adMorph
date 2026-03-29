@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Layers, MousePointer2, Trash2 } from 'lucide-react';
 import { useAdStore } from '../store';
 import { CanvasElement } from './CanvasElement';
 import type { AdElement, AdElementStyles, CapturedAd } from '../types';
@@ -27,11 +27,32 @@ export function Canvas() {
 
   if (ads.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-3 px-8 text-center">
-        <p className="text-lg font-medium text-slate-400">No ads captured yet</p>
-        <p className="text-sm">
-          Activate the Ad-Morph Chrome extension, hover over an ad, and click to capture it.
-        </p>
+      <div className="flex flex-col items-center justify-center h-full px-8 text-center gap-8">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center">
+            <MousePointer2 size={28} className="text-blue-400" />
+          </div>
+          <div>
+            <p className="text-lg font-semibold text-slate-200">No ads captured yet</p>
+            <p className="text-sm text-slate-500 mt-1 max-w-xs leading-relaxed">
+              Use the Chrome extension to capture any ad from any webpage.
+            </p>
+          </div>
+        </div>
+        <ol className="text-left space-y-3 max-w-xs w-full">
+          {[
+            <>Click the <span className="text-slate-300 font-medium">Ad-Morph</span> icon in Chrome</>,
+            <>Hover over an ad on any webpage to highlight it</>,
+            <>Click the ad — it opens here instantly</>,
+          ].map((step, i) => (
+            <li key={i} className="flex items-start gap-3 text-sm text-slate-500">
+              <span className="w-5 h-5 rounded-full bg-slate-800 border border-slate-700 text-blue-400 text-xs flex items-center justify-center shrink-0 mt-0.5">
+                {i + 1}
+              </span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
       </div>
     );
   }
@@ -75,6 +96,18 @@ interface AdBlockProps {
 function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, screenshot, onSelectElement, onRemove }: AdBlockProps) {
   const updateElement = useAdStore((s) => s.updateElement);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showDetection, setShowDetection] = useState(false);
+
+  // Auto-enable detection view when extraction completes
+  const prevExtractingRef = useRef(false);
+  useEffect(() => {
+    if (prevExtractingRef.current && !isExtracting && screenshot) {
+      setShowDetection(true);
+    }
+    prevExtractingRef.current = isExtracting;
+  }, [isExtracting, screenshot]);
+
+  const backgroundId = ad.elements[0]?.id;
 
   // Use the root element's dimensions as the authoritative ad size.
   // Some DOM elements may have negative coords (captured above/left of the
@@ -136,13 +169,32 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, screensh
             boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
           }}
         >
-          {/* During extraction show the raw screenshot so the canvas isn't blank */}
+          {/* During extraction: show raw screenshot */}
           {isExtracting && screenshot ? (
             <img
               src={`data:image/jpeg;base64,${screenshot}`}
               draggable={false}
               style={{ width: '100%', height: '100%', display: 'block', userSelect: 'none' }}
             />
+          ) : showDetection && screenshot ? (
+            /* Detection view: screenshot + bounding boxes */
+            <>
+              <img
+                src={`data:image/jpeg;base64,${screenshot}`}
+                draggable={false}
+                style={{ width: '100%', height: '100%', display: 'block', userSelect: 'none', position: 'absolute', inset: 0 }}
+              />
+              {sorted
+                .filter((el) => el.id !== backgroundId)
+                .map((el) => (
+                  <BoundingBox
+                    key={el.id}
+                    element={el}
+                    isSelected={el.id === selectedElementId}
+                    onClick={() => { setEditingId(null); onSelectElement(el.id); }}
+                  />
+                ))}
+            </>
           ) : (
             sorted.map((el) => (
               <CanvasElement
@@ -188,6 +240,22 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, screensh
         )}
       </div>
 
+      {/* Detection toggle — only when screenshot available */}
+      {screenshot && !isExtracting && (
+        <button
+          title={showDetection ? 'Show rendered elements' : 'Show AI detection boxes'}
+          onClick={(e) => { e.stopPropagation(); setShowDetection((v) => !v); }}
+          className={`p-1.5 rounded-lg transition-colors ${
+            showDetection
+              ? 'text-blue-400 bg-blue-950/40'
+              : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/40'
+          }`}
+          style={{ position: 'absolute', top: -32, right: 30, zIndex: 9998 }}
+        >
+          <Layers size={15} />
+        </button>
+      )}
+
       {/* Trash button — absolutely positioned top-right, outside the ad area */}
       <button
         title="Delete this ad"
@@ -197,6 +265,66 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, screensh
       >
         <Trash2 size={15} />
       </button>
+    </div>
+  );
+}
+
+// ── Detection bounding box ───────────────────────────────────────────────────
+
+const BOX_COLORS: Record<string, string> = {
+  text:      '#3b82f6', // blue
+  image:     '#f59e0b', // amber
+  button:    '#22c55e', // green
+  container: '#a855f7', // purple
+};
+
+function BoundingBox({
+  element,
+  isSelected,
+  onClick,
+}: {
+  element: AdElement;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  const color = BOX_COLORS[element.type] ?? '#94a3b8';
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: element.styles.left,
+        top: element.styles.top,
+        width: element.styles.width,
+        height: element.styles.height,
+        border: `2px solid ${color}`,
+        backgroundColor: isSelected ? `${color}33` : `${color}14`,
+        zIndex: element.zIndex + 1,
+        cursor: 'pointer',
+        boxSizing: 'border-box',
+        outline: isSelected ? `2px solid ${color}` : 'none',
+        outlineOffset: 2,
+      }}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          top: 2,
+          left: 2,
+          fontSize: 9,
+          fontWeight: 700,
+          color: '#fff',
+          background: color,
+          padding: '1px 5px',
+          borderRadius: 2,
+          lineHeight: '14px',
+          userSelect: 'none',
+          pointerEvents: 'none',
+          letterSpacing: '0.03em',
+        }}
+      >
+        {element.type}
+      </span>
     </div>
   );
 }

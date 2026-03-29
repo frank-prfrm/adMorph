@@ -1,13 +1,17 @@
 export interface AppSettings {
   llm: {
-    provider: 'ollama' | 'anthropic' | 'openai';
+    provider: 'ollama' | 'anthropic' | 'openai' | 'gemini';
     ollamaBaseUrl: string;
     ollamaModel: string;
     anthropicApiKey: string;
     anthropicModel: string;
     openaiApiKey: string;
     openaiModel: string;
+    geminiApiKey: string;
+    geminiModel: string;
+    geminiImageModel: string;
   };
+  maxTokens: number;
   supabaseEnabled: boolean;
 }
 
@@ -22,7 +26,11 @@ const DEFAULTS: AppSettings = {
     anthropicModel: 'claude-opus-4-6',
     openaiApiKey: '',
     openaiModel: 'gpt-4o',
+    geminiApiKey: '',
+    geminiModel: 'gemini-3.1-flash-preview',
+    geminiImageModel: 'gemini-3.1-flash-image-preview',
   },
+  maxTokens: 100000,
   supabaseEnabled: false,
 };
 

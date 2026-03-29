@@ -1,6 +1,6 @@
 import type { AdElement } from '../../../types';
 import { AiRefineError } from '../../../utils/openai';
-import { SYSTEM_PROMPT, VISION_SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, parseAdElements, parseExtractedElements } from '../shared';
+import { SYSTEM_PROMPT, VISION_SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, parseAdElements, parseExtractedElements, pctToPixels } from '../shared';
 import type { LLMProvider } from '../provider';
 
 const MAX_RETRIES = 2;
@@ -49,7 +49,7 @@ export class OllamaProvider implements LLMProvider {
       if (!raw) throw new AiRefineError('Empty extraction response from Ollama.');
 
       try {
-        const parsed = parseExtractedElements(raw, 'Ollama');
+        const parsed = pctToPixels(parseExtractedElements(raw, 'Ollama'), adWidth, adHeight);
         console.log('[Ollama extractAd] PARSED ELEMENTS →', JSON.parse(JSON.stringify(parsed)));
         return parsed;
       } catch (err) {

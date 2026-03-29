@@ -4,6 +4,24 @@ import type { AppSettings } from '../../lib/storage/settings';
 import { getProvider } from '../../lib/llm/factory';
 import { useProviderHealth } from '../../hooks/useProviderHealth';
 import { useOllamaModels } from '../../hooks/useOllamaModels';
+import { getTokensForProvider, getTokenUsage } from '../../lib/storage/tokenUsage';
+
+function fmt(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return n.toString();
+}
+
+function TokenUsageRow({ provider }: { provider: string }) {
+  const tokens = getTokensForProvider(provider);
+  if (tokens === 0) return null;
+  return (
+    <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+      <span>Tokens used</span>
+      <span className="font-mono text-slate-400">{fmt(tokens)}</span>
+    </div>
+  );
+}
 
 interface Props {
   settings: AppSettings;
@@ -27,6 +45,8 @@ function HealthIndicator({ settings }: { settings: AppSettings }) {
 export function SettingsPanel({ settings, onSave, onClose }: Props) {
   const [draft, setDraft] = useState<AppSettings>(settings);
   const llm = draft.llm;
+  const { totalTokens } = getTokenUsage();
+  const usedPct = Math.min(100, draft.maxTokens > 0 ? (totalTokens / draft.maxTokens) * 100 : 0);
 
   const setLlm = (patch: Partial<AppSettings['llm']>) =>
     setDraft((d) => ({ ...d, llm: { ...d.llm, ...patch } }));
@@ -51,7 +71,7 @@ export function SettingsPanel({ settings, onSave, onClose }: Props) {
           <div>
             <label className="field-label mb-2 block">Provider</label>
             <div className="flex gap-3">
-              {(['ollama', 'anthropic', 'openai'] as const).map((p) => (
+              {(['ollama', 'anthropic', 'openai', 'gemini'] as const).map((p) => (
                 <label key={p} className="flex items-center gap-1.5 cursor-pointer text-sm text-slate-300">
                   <input
                     type="radio"
@@ -70,6 +90,7 @@ export function SettingsPanel({ settings, onSave, onClose }: Props) {
           {/* Ollama fields */}
           {llm.provider === 'ollama' && (
             <div className="space-y-3">
+              <TokenUsageRow provider="ollama" />
               <div>
                 <label className="field-label">Base URL</label>
                 <div className="flex items-center gap-2">
@@ -119,6 +140,7 @@ export function SettingsPanel({ settings, onSave, onClose }: Props) {
           {/* Anthropic fields */}
           {llm.provider === 'anthropic' && (
             <div className="space-y-3">
+              <TokenUsageRow provider="anthropic" />
               <div>
                 <label className="field-label">API Key</label>
                 <input
@@ -143,6 +165,7 @@ export function SettingsPanel({ settings, onSave, onClose }: Props) {
           {/* OpenAI fields */}
           {llm.provider === 'openai' && (
             <div className="space-y-3">
+              <TokenUsageRow provider="openai" />
               <div>
                 <label className="field-label">API Key</label>
                 <input
@@ -164,6 +187,51 @@ export function SettingsPanel({ settings, onSave, onClose }: Props) {
             </div>
           )}
 
+          {/* Gemini fields */}
+          {llm.provider === 'gemini' && (
+            <div className="space-y-3">
+              <TokenUsageRow provider="gemini" />
+              <div>
+                <label className="field-label">API Key</label>
+                <input
+                  type="password"
+                  className="input"
+                  placeholder="AIza..."
+                  value={llm.geminiApiKey}
+                  onChange={(e) => setLlm({ geminiApiKey: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="field-label">Text model</label>
+                <input
+                  className="input"
+                  list="gemini-models"
+                  value={llm.geminiModel}
+                  onChange={(e) => setLlm({ geminiModel: e.target.value })}
+                  placeholder="e.g. gemini-3.1-flash"
+                />
+              </div>
+              <div>
+                <label className="field-label">Image model</label>
+                <input
+                  className="input"
+                  list="gemini-models"
+                  value={llm.geminiImageModel}
+                  onChange={(e) => setLlm({ geminiImageModel: e.target.value })}
+                  placeholder="e.g. gemini-3.1-flash-image"
+                />
+                <datalist id="gemini-models">
+                  <option value="gemini-3.1-flash-preview" />
+                  <option value="gemini-3.1-flash-image-preview" />
+                  <option value="gemini-2.0-flash" />
+                  <option value="gemini-2.5-pro-preview-03-25" />
+                  <option value="gemini-1.5-pro" />
+                  <option value="gemini-1.5-flash" />
+                </datalist>
+              </div>
+            </div>
+          )}
+
           {/* Health status — only shown for cloud providers; Ollama uses the inline URL indicator */}
           {llm.provider !== 'ollama' && (
             <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -171,6 +239,37 @@ export function SettingsPanel({ settings, onSave, onClose }: Props) {
               <span>Provider health</span>
             </div>
           )}
+        </div>
+
+        {/* Token usage + max tokens */}
+        <div className="px-5 py-4 border-t border-slate-700 space-y-2">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>Total tokens used</span>
+            <span className="font-mono">
+              {fmt(totalTokens)}
+              {draft.maxTokens > 0 && (
+                <span className="text-slate-600"> / {fmt(draft.maxTokens)}</span>
+              )}
+            </span>
+          </div>
+          {draft.maxTokens > 0 && (
+            <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${usedPct >= 90 ? 'bg-red-500' : usedPct >= 70 ? 'bg-amber-400' : 'bg-blue-500'}`}
+                style={{ width: `${usedPct}%` }}
+              />
+            </div>
+          )}
+          <div className="flex items-center gap-2 pt-1">
+            <label className="text-xs text-slate-500 shrink-0">Max tokens</label>
+            <input
+              className="input flex-1 text-xs"
+              type="number"
+              min={0}
+              value={draft.maxTokens}
+              onChange={(e) => setDraft((d) => ({ ...d, maxTokens: parseInt(e.target.value) || 0 }))}
+            />
+          </div>
         </div>
 
         {/* Footer */}

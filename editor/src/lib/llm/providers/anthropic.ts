@@ -1,6 +1,6 @@
 import type { AdElement } from '../../../types';
 import { AiRefineError } from '../../../utils/openai';
-import { SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, parseAdElements, parseExtractedElements } from '../shared';
+import { SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, parseAdElements, parseExtractedElements, pctToPixels } from '../shared';
 import type { LLMProvider } from '../provider';
 
 export class AnthropicProvider implements LLMProvider {
@@ -46,7 +46,7 @@ export class AnthropicProvider implements LLMProvider {
     const raw = data.content?.[0]?.text;
     if (!raw) throw new AiRefineError('Empty extraction response from Anthropic.');
 
-    return parseExtractedElements(raw, 'Anthropic');
+    return pctToPixels(parseExtractedElements(raw, 'Anthropic'), adWidth, adHeight);
   }
 
   async refineAd(elements: AdElement[], userRequest: string, _screenshotBase64?: string): Promise<AdElement[]> {
