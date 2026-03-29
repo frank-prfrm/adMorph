@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { AppSettings } from '../../lib/storage/settings';
+import { EXTRACTION_PROMPTS } from '../../lib/llm/shared';
+import type { ExtractionPromptId } from '../../lib/llm/shared';
 import { getProvider } from '../../lib/llm/factory';
 import { useProviderHealth } from '../../hooks/useProviderHealth';
 import { useOllamaModels } from '../../hooks/useOllamaModels';
@@ -67,6 +69,45 @@ export function SettingsPanel({ settings, onSave, onClose }: Props) {
         </div>
 
         <div className="px-5 py-4 space-y-5">
+          {/* Extraction prompt picker */}
+          <div>
+            <label className="field-label mb-2 block">Extraction Prompt</label>
+            <div className="flex flex-col gap-2">
+              {(Object.keys(EXTRACTION_PROMPTS) as ExtractionPromptId[]).map((id) => {
+                const p = EXTRACTION_PROMPTS[id];
+                const isSelected = draft.extractionPromptId === id;
+                return (
+                  <label
+                    key={id}
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'border-purple-500 bg-purple-950/30'
+                        : 'border-slate-700 hover:border-slate-600 hover:bg-slate-800/30'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="extractionPromptId"
+                      value={id}
+                      checked={isSelected}
+                      onChange={() => setDraft((d) => ({ ...d, extractionPromptId: id }))}
+                      className="accent-purple-500 mt-0.5 shrink-0"
+                    />
+                    <div>
+                      <div className={`text-sm font-medium ${isSelected ? 'text-purple-300' : 'text-slate-300'}`}>
+                        {p.label}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5 leading-relaxed">{p.description}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            {draft.llm.provider === 'gemini' && (
+              <p className="text-xs text-slate-600 mt-2">Gemini uses its own multi-phase prompt regardless of this setting.</p>
+            )}
+          </div>
+
           {/* Provider selector */}
           <div>
             <label className="field-label mb-2 block">Provider</label>

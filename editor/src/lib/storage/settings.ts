@@ -1,3 +1,5 @@
+import type { ExtractionPromptId } from '../llm/shared';
+
 export interface AppSettings {
   llm: {
     provider: 'ollama' | 'anthropic' | 'openai' | 'gemini';
@@ -11,6 +13,7 @@ export interface AppSettings {
     geminiModel: string;
     geminiImageModel: string;
   };
+  extractionPromptId: ExtractionPromptId;
   maxTokens: number;
   supabaseEnabled: boolean;
 }
@@ -30,6 +33,7 @@ const DEFAULTS: AppSettings = {
     geminiModel: 'gemini-3.1-flash-preview',
     geminiImageModel: 'gemini-3.1-flash-image-preview',
   },
+  extractionPromptId: 'elements',
   maxTokens: 100000,
   supabaseEnabled: false,
 };

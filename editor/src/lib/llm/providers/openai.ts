@@ -1,12 +1,19 @@
 import type { AdElement } from '../../../types';
 import { AiRefineError } from '../../../utils/openai';
-import { SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, parseAdElements, parseExtractedElements, pctToPixels } from '../shared';
+import { SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, SCENE_EXTRACTION_PROMPT, parseAdElements, parseExtractedElements, parseSceneElements, pctToPixels } from '../shared';
+import type { ExtractionPromptId } from '../shared';
 import type { LLMProvider } from '../provider';
 
 export class OpenAIProvider implements LLMProvider {
-  constructor(private config: { apiKey: string; model: string }) {}
+  constructor(private config: { apiKey: string; model: string; promptId?: ExtractionPromptId }) {}
 
   async extractAd(screenshot: string, adWidth: number, adHeight: number): Promise<AdElement[]> {
+    const useScene = this.config.promptId === 'scene';
+    const systemPrompt = useScene ? SCENE_EXTRACTION_PROMPT : EXTRACTION_SYSTEM_PROMPT;
+    const userText = useScene
+      ? 'Analyze this advertisement image and return the exhaustive scene JSON as instructed.'
+      : `The advertisement is ${adWidth}×${adHeight} pixels. Analyze it and return the element JSON as instructed.`;
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -18,7 +25,7 @@ export class OpenAIProvider implements LLMProvider {
         response_format: { type: 'json_object' },
         temperature: 0.2,
         messages: [
-          { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
+          { role: 'system', content: systemPrompt },
           {
             role: 'user',
             content: [
@@ -26,10 +33,7 @@ export class OpenAIProvider implements LLMProvider {
                 type: 'image_url',
                 image_url: { url: `data:image/jpeg;base64,${screenshot}`, detail: 'high' },
               },
-              {
-                type: 'text',
-                text: `The advertisement is ${adWidth}×${adHeight} pixels. Analyze it and return the element JSON as instructed.`,
-              },
+              { type: 'text', text: userText },
             ],
           },
         ],
@@ -45,7 +49,10 @@ export class OpenAIProvider implements LLMProvider {
     const raw = data.choices?.[0]?.message?.content;
     if (!raw) throw new AiRefineError('Empty extraction response from OpenAI.');
 
-    return pctToPixels(parseExtractedElements(raw, 'OpenAI'), adWidth, adHeight);
+    const elements = useScene
+      ? parseSceneElements(raw, 'OpenAI')
+      : parseExtractedElements(raw, 'OpenAI');
+    return pctToPixels(elements, adWidth, adHeight);
   }
 
   async refineAd(elements: AdElement[], userRequest: string, _screenshotBase64?: string): Promise<AdElement[]> {

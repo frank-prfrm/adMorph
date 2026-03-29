@@ -1,6 +1,8 @@
 import type { AdElement } from '../../types';
 import { AiRefineError } from '../../utils/openai';
 
+export type ExtractionPromptId = 'elements' | 'scene';
+
 export const VISION_SYSTEM_PROMPT = `You are an ad design assistant. You can see a screenshot of the rendered ad and its JSON data.
 Use the visual appearance to inform your changes.
 Return ONLY a valid JSON array with the same structure.
@@ -73,6 +75,234 @@ Example of a correct response for a 300×250 ad:
     }
   ]
 }`;
+
+export const SCENE_EXTRACTION_PROMPT = `Your task is to convert the provided image into a machine-readable, fully exhaustive JSON file that contains every discernible element required to recreate the image with maximal fidelity inside of generative-image engines (e.g., Nano Banana, flux, DALL·E, etc.).
+This JSON must encode every visible detail, regardless of size, prominence, or relevance.
+If it exists visually, it must exist in your JSON.
+Do not summarize.
+Do not provide interpretations.
+Do not omit micro-details.
+Do not output text descriptions outside the JSON.
+Return a single JSON object ONLY.
+
+PRE-ANALYSIS PROTOCOL (MANDATORY)
+Before generating JSON, silently perform three internal scans (do NOT output these steps):
+1. Macro Sweep — identify: full scene type, overall layout, lighting environment, color distribution, perspective, atmosphere, foreground/background separation.
+2. Micro Sweep — scan for: texture patterns, material type, reflections + highlights, dust/scratches/wear, stitching/seams/imperfections, shadows (hard/soft, direction, gradation), OCR text and typography (exact styles, sizes, case).
+3. Relationship Sweep — map: spatial placement of all objects, orientation, occlusions, overlaps, hierarchy of visual attention, connections (e.g. "object A resting on object B").
+
+OUTPUT FORMAT (STRICT)
+Produce one valid JSON object using the following schema. Expand arrays and objects as required so that all details in the image are captured.
+
+{
+  "meta": {
+    "image_quality": "Low/Medium/High/Very High",
+    "image_type": "Photo/Illustration/Diagram/Screenshot/etc",
+    "resolution_estimation": "Approximate resolution if discernable",
+    "file_characteristics": {
+      "compression_artifacts": "None/Low/Medium/High",
+      "noise_level": "None/Low/Medium/High",
+      "lens_type_estimation": "If inferable (e.g., wide/tele/macro)"
+    }
+  },
+  "global_context": {
+    "scene_description": "Comprehensive paragraph describing entire scene exactly as visible",
+    "environment_type": "Indoor/Outdoor/Studio/Virtual/Unknown",
+    "time_of_day": "If discernable: Day/Night/Golden hour/etc",
+    "weather_atmosphere": "Foggy/Clear/Hazy/Rainy/Chaotic/Serene/etc",
+    "lighting": {
+      "source": "Sunlight/Artificial/Mixed/Backlit/etc",
+      "direction": "Top-down/Side/Back/etc",
+      "quality": "Hard/Soft/Diffused",
+      "color_temperature": "Warm/Cool/Neutral (in Kelvin if inferable)"
+    },
+    "color_palette": {
+      "dominant_hex_estimates": ["#RRGGBB"],
+      "accent_colors": ["#RRGGBB"],
+      "contrast_level": "Low/Medium/High"
+    }
+  },
+  "composition": {
+    "camera_angle": "Eye-level/High-angle/Low-angle/Macro/etc",
+    "framing": "Close-up/Medium/Wide/Extreme/etc",
+    "depth_of_field": "Shallow/Medium/Deep",
+    "focal_point": "Primary element pulling visual attention",
+    "symmetry_type": "None/Horizontal/Vertical/Radial/etc",
+    "rule_of_thirds_alignment": "If objects align with thirds intersections"
+  },
+  "objects": [
+    {
+      "id": "obj_001",
+      "label": "Object name or classification",
+      "category": "Person/Vehicle/Furniture/Text/Screen/UI elements/etc",
+      "location": {
+        "relative_position": "Top-left/Center-right/etc",
+        "bounding_box_percentage": { "x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0 }
+      },
+      "dimensions_relative": "Large/Medium/Small relative to frame",
+      "distance_from_camera": "Near/Mid/Far",
+      "pose_orientation": "Facing direction, tilt, rotation, posture data",
+      "material": "Wood/Metal/Glass/Plastic/Fabric/etc",
+      "surface_properties": {
+        "texture": "Smooth/Rough/Glossy/Matte/Patterned/etc",
+        "reflectivity": "None/Low/Medium/High",
+        "micro_details": "Scratches/Scuffs/Dust/Stains/Print patterns/etc",
+        "wear_state": "New/Worn/Damaged/Dirty/etc"
+      },
+      "color_details": {
+        "base_color_hex": "#RRGGBB",
+        "secondary_colors": ["#RRGGBB"],
+        "gradient_or_pattern": "Describe if present"
+      },
+      "interaction_with_light": {
+        "shadow_casting": "Direction/Sharpness/Occlusion areas",
+        "highlight_zones": "Where light hits strongest",
+        "translucency": "If applicable"
+      },
+      "text_content": {
+        "raw_text": "Exact OCR extraction",
+        "font_style": "Sans-serif/Serif/Monospace/etc",
+        "font_weight": "Light/Regular/Bold/etc",
+        "text_case": "Uppercase/Lowercase/Mixed",
+        "alignment": "Left/Center/Right",
+        "color_hex": "#RRGGBB"
+      },
+      "relationships": [
+        { "type": "next_to/overlapping/attached/holding/etc", "target_object_id": "obj_002" }
+      ]
+    }
+  ],
+  "background_details": {
+    "texture": "Wall/sky/clouds/fabric/etc",
+    "patterns": "Stripes/speckled/no pattern/etc",
+    "lighting_behavior": "How background receives light",
+    "additional_elements": ["Any secondary or subtle elements"]
+  },
+  "foreground_elements": {
+    "particles": "Dust/smoke/bokeh debris etc if present",
+    "artifacts": "Lens flare, chromatic aberration, reflections"
+  },
+  "reconstruction_notes": {
+    "mandatory_elements_for_recreation": "List must-have items",
+    "sensitivity_factors": "Details that strongly influence resemblance",
+    "ambiguities": "Anything not fully verifiable"
+  }
+}`;
+
+export const EXTRACTION_PROMPTS: Record<ExtractionPromptId, { label: string; description: string }> = {
+  elements: {
+    label: 'Element Extractor',
+    description: 'Extracts editable layers — text, images, buttons — with bounding boxes sized for the canvas.',
+  },
+  scene: {
+    label: 'Scene Descriptor',
+    description: 'Exhaustive scene analysis: materials, lighting, micro-details. Maps detected objects to canvas layers.',
+  },
+};
+
+/** Map a scene-format category string to our AdElement type. */
+function categoryToType(category: string): AdElement['type'] {
+  const c = category.toLowerCase();
+  if (c.includes('text') || c.includes('typography') || c.includes('copy')) return 'text';
+  if (c.includes('button') || c.includes('cta') || c.includes('ui')) return 'button';
+  if (c.includes('person') || c.includes('vehicle') || c.includes('product') ||
+      c.includes('screen') || c.includes('photo') || c.includes('image') || c.includes('logo')) return 'image';
+  return 'container';
+}
+
+/** Map scene font_weight string to a CSS font-weight value. */
+function mapFontWeight(fw: string | undefined): string {
+  if (!fw) return '400';
+  const f = fw.toLowerCase();
+  if (f === 'bold' || f === 'heavy') return '700';
+  if (f === 'light' || f === 'thin') return '300';
+  if (f === 'medium' || f === 'semibold') return '600';
+  return '400';
+}
+
+/**
+ * Parse the exhaustive scene JSON (returned by SCENE_EXTRACTION_PROMPT) into AdElement[].
+ * Coordinates are in 0–1 bounding_box_percentage → multiply by 100 → feed to pctToPixels.
+ */
+export function parseSceneElements(raw: string, providerName: string): AdElement[] {
+  const cleaned = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(cleaned) as Record<string, unknown>;
+  } catch {
+    throw new AiRefineError(`${providerName} returned invalid JSON for scene extraction.`);
+  }
+
+  const objects = parsed.objects as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(objects) || objects.length === 0) {
+    throw new AiRefineError(`${providerName} scene response contained no objects array.`);
+  }
+
+  // Build the background element from the global color palette
+  const palette = (parsed.global_context as Record<string, unknown> | undefined)?.color_palette as Record<string, unknown> | undefined;
+  const dominantColors = palette?.dominant_hex_estimates as string[] | undefined;
+  const bgColor = dominantColors?.[0] ?? '#000000';
+
+  const background: AdElement = {
+    id: 'el-0',
+    type: 'container',
+    content: '',
+    styles: {
+      top: 0, left: 0, width: 100, height: 100,
+      backgroundColor: bgColor,
+      color: '#ffffff',
+      fontSize: '16px',
+      fontWeight: '400',
+      borderRadius: '0px',
+      backgroundImage: '',
+      opacity: '1',
+      zIndex: '0',
+    },
+    zIndex: 0,
+  };
+
+  const elements: AdElement[] = [background];
+
+  objects.forEach((obj, i) => {
+    const location = obj.location as Record<string, unknown> | undefined;
+    const bbox = location?.bounding_box_percentage as Record<string, number> | undefined;
+    const textContent = obj.text_content as Record<string, unknown> | undefined;
+    const colorDetails = obj.color_details as Record<string, unknown> | undefined;
+
+    // bounding_box_percentage is 0–1; multiply by 100 for our % system (pctToPixels converts to px)
+    const left   = ((bbox?.x   ?? 0) * 100);
+    const top    = ((bbox?.y   ?? 0) * 100);
+    const width  = ((bbox?.width  ?? 1) * 100);
+    const height = ((bbox?.height ?? 1) * 100);
+
+    const rawText = textContent?.raw_text as string | undefined;
+    const category = obj.category as string | undefined ?? '';
+    const type = categoryToType(category);
+
+    elements.push({
+      id: `el-${i + 1}`,
+      type,
+      content: rawText ?? '',
+      styles: {
+        top,
+        left,
+        width,
+        height,
+        backgroundColor: colorDetails?.base_color_hex as string ?? 'transparent',
+        color: textContent?.color_hex as string ?? '#ffffff',
+        fontSize: '16px',
+        fontWeight: mapFontWeight(textContent?.font_weight as string | undefined),
+        borderRadius: '0px',
+        backgroundImage: '',
+        opacity: '1',
+        zIndex: String(i + 1),
+      },
+      zIndex: i + 1,
+    });
+  });
+
+  return elements;
+}
 
 /** Convert percentage coordinates (0–100) returned by the AI into CSS pixels. */
 export function pctToPixels(elements: AdElement[], adW: number, adH: number): AdElement[] {
