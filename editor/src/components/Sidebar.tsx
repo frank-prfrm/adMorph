@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Copy, Check, X, Braces, RefreshCw, ImagePlus } from 'lucide-react';
 import { useAdStore } from '../store';
+import { useSettings } from '../hooks/useSettings';
+import { EXTRACTION_PROMPTS } from '../lib/llm/shared';
 import type { AdElementStyles, CapturedAd } from '../types';
 
 export function Sidebar() {
@@ -50,6 +52,8 @@ export function Sidebar() {
   };
 
   const isBackground = !!activeAd && selected?.id === activeAd.elements[0]?.id;
+  const { settings } = useSettings();
+  const promptLabel = EXTRACTION_PROMPTS[settings.extractionPromptId]?.label ?? 'Element Extractor';
 
   return (
     <aside className="w-72 bg-slate-900 border-l border-slate-700 flex flex-col h-full overflow-hidden">
@@ -98,13 +102,18 @@ export function Sidebar() {
                   Click an element on the canvas to edit its properties.
                 </p>
                 {activeAd && adScreenshots[activeAd.id] && (
-                  <button
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-blue-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
-                    onClick={() => requestReExtract(activeAd.id)}
-                  >
-                    <RefreshCw size={12} />
-                    Re-analyze with AI
-                  </button>
+                  <div className="flex flex-col items-center gap-1.5">
+                    <button
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-blue-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
+                      onClick={() => requestReExtract(activeAd.id)}
+                    >
+                      <RefreshCw size={12} />
+                      Re-analyze with AI
+                    </button>
+                    <span className="text-xs text-slate-600">
+                      using <span className="text-slate-500">{promptLabel}</span>
+                    </span>
+                  </div>
                 )}
               </div>
             )}
