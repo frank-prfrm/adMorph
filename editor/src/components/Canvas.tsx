@@ -196,18 +196,32 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, screensh
                 ))}
             </>
           ) : (
-            sorted.map((el) => (
-              <CanvasElement
-                key={el.id}
-                element={el}
-                isSelected={el.id === selectedElementId}
-                isEditing={el.id === editingId}
-                onClick={(id) => { setEditingId(null); onSelectElement(id); }}
-                onDoubleClick={(id) => { onSelectElement(id); setEditingId(id); }}
-                onEditCommit={handleEditCommit}
-                onImageSwap={handleImageSwap}
-              />
-            ))
+            <>
+              {/* When a screenshot exists, use it as the background instead of
+                  the DOM-captured root element (which often has a raw black
+                  backgroundColor that hides the real ad visuals post-extraction). */}
+              {screenshot && (
+                <img
+                  src={`data:image/jpeg;base64,${screenshot}`}
+                  draggable={false}
+                  style={{ width: '100%', height: '100%', display: 'block', userSelect: 'none', position: 'absolute', inset: 0, pointerEvents: 'none' }}
+                />
+              )}
+              {sorted
+                .filter((el) => !screenshot || el.id !== backgroundId)
+                .map((el) => (
+                  <CanvasElement
+                    key={el.id}
+                    element={el}
+                    isSelected={el.id === selectedElementId}
+                    isEditing={el.id === editingId}
+                    onClick={(id) => { setEditingId(null); onSelectElement(id); }}
+                    onDoubleClick={(id) => { onSelectElement(id); setEditingId(id); }}
+                    onEditCommit={handleEditCommit}
+                    onImageSwap={handleImageSwap}
+                  />
+                ))}
+            </>
           )}
         </div>
 
@@ -287,7 +301,9 @@ function BoundingBox({
   isSelected: boolean;
   onClick: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   const color = BOX_COLORS[element.type] ?? '#94a3b8';
+  const active = isSelected || hovered;
   return (
     <div
       style={{
@@ -296,36 +312,19 @@ function BoundingBox({
         top: element.styles.top,
         width: element.styles.width,
         height: element.styles.height,
-        border: `2px solid ${color}`,
-        backgroundColor: isSelected ? `${color}33` : `${color}14`,
+        border: `2px solid ${active ? color : `${color}66`}`,
+        backgroundColor: isSelected ? `${color}33` : hovered ? `${color}1a` : 'transparent',
         zIndex: element.zIndex + 1,
         cursor: 'pointer',
         boxSizing: 'border-box',
         outline: isSelected ? `2px solid ${color}` : 'none',
         outlineOffset: 2,
+        transition: 'background-color 0.1s, border-color 0.1s',
       }}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-    >
-      <span
-        style={{
-          position: 'absolute',
-          top: 2,
-          left: 2,
-          fontSize: 9,
-          fontWeight: 700,
-          color: '#fff',
-          background: color,
-          padding: '1px 5px',
-          borderRadius: 2,
-          lineHeight: '14px',
-          userSelect: 'none',
-          pointerEvents: 'none',
-          letterSpacing: '0.03em',
-        }}
-      >
-        {element.type}
-      </span>
-    </div>
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    />
   );
 }
 
