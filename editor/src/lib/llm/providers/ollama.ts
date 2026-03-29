@@ -2,14 +2,14 @@ import type { AdElement } from '../../../types';
 import { AiRefineError } from '../../../utils/openai';
 import { SYSTEM_PROMPT, VISION_SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, SCENE_EXTRACTION_PROMPT, parseAdElements, parseExtractedElements, parseSceneElements, pctToPixels } from '../shared';
 import type { ExtractionPromptId } from '../shared';
-import type { LLMProvider } from '../provider';
+import type { LLMProvider, ExtractionResult } from '../provider';
 
 const MAX_RETRIES = 2;
 
 export class OllamaProvider implements LLMProvider {
   constructor(private config: { baseUrl: string; model: string; promptId?: ExtractionPromptId }) {}
 
-  async extractAd(screenshot: string, adWidth: number, adHeight: number): Promise<AdElement[]> {
+  async extractAd(screenshot: string, adWidth: number, adHeight: number): Promise<ExtractionResult> {
     const useScene = this.config.promptId === 'scene';
     const systemPrompt = useScene ? SCENE_EXTRACTION_PROMPT : EXTRACTION_SYSTEM_PROMPT;
     const userMsg = {
@@ -59,7 +59,7 @@ export class OllamaProvider implements LLMProvider {
           : parseExtractedElements(raw, 'Ollama');
         const parsed = pctToPixels(elements, adWidth, adHeight);
         console.log('[Ollama extractAd] PARSED ELEMENTS →', JSON.parse(JSON.stringify(parsed)));
-        return parsed;
+        return { elements: parsed, rawJson: raw };
       } catch (err) {
         if (attempt === MAX_RETRIES) throw err;
       }

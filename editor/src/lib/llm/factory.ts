@@ -13,8 +13,7 @@ export function getProvider(settings: AppSettings): LLMProvider {
     case 'ollama':
       return new OllamaProvider({ baseUrl: llm.ollamaBaseUrl, model: llm.ollamaModel, promptId: extractionPromptId });
     case 'gemini':
-      // Gemini uses its own multi-phase prompt system — extractionPromptId is intentionally ignored
-      return new GeminiProvider({ apiKey: llm.geminiApiKey, model: llm.geminiModel, imageModel: llm.geminiImageModel });
+      return new GeminiProvider({ apiKey: llm.geminiApiKey, model: llm.geminiModel, imageModel: llm.geminiImageModel, promptId: extractionPromptId });
     case 'openai':
     default:
       return new OpenAIProvider({ apiKey: llm.openaiApiKey, model: llm.openaiModel, promptId: extractionPromptId });

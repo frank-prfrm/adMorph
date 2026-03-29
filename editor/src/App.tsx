@@ -16,6 +16,7 @@ export default function App() {
   const setAds = useAdStore((s) => s.setAds);
   const addAd = useAdStore((s) => s.addAd);
   const setAdElements = useAdStore((s) => s.setAdElements);
+  const setAdRawJson = useAdStore((s) => s.setAdRawJson);
   const setAdExtracting = useAdStore((s) => s.setAdExtracting);
   const setAdExtractionError = useAdStore((s) => s.setAdExtractionError);
   const setAdScreenshot = useAdStore((s) => s.setAdScreenshot);
@@ -35,7 +36,8 @@ export default function App() {
     setAdExtracting(ad.id, true);
     try {
       const provider = getProvider(settings);
-      const extracted = await provider.extractAd(screenshot, adW, adH);
+      const { elements: extracted, rawJson } = await provider.extractAd(screenshot, adW, adH);
+      setAdRawJson(ad.id, rawJson);
       // Only apply if the model returned more than just the root container —
       // a single-element result means extraction didn't really work; keep the DOM capture.
       if (extracted.length > 1) {
@@ -50,7 +52,7 @@ export default function App() {
     } finally {
       setAdExtracting(ad.id, false);
     }
-  }, [settings, setAdElements, setAdExtracting, setAdExtractionError]);
+  }, [settings, setAdElements, setAdRawJson, setAdExtracting, setAdExtractionError]);
 
   // ── Initial load ───────────────────────────────────────────────────────────
   useEffect(() => {
