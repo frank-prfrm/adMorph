@@ -1,12 +1,19 @@
 import type { AdElement } from '../../../types';
 import { AiRefineError } from '../../../utils/openai';
-import { SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, parseAdElements, parseExtractedElements, pctToPixels } from '../shared';
-import type { LLMProvider } from '../provider';
+import { SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, SCENE_EXTRACTION_PROMPT, parseAdElements, parseExtractedElements, parseSceneElements, pctToPixels } from '../shared';
+import type { ExtractionPromptId } from '../shared';
+import type { LLMProvider, ExtractionResult } from '../provider';
 
 export class AnthropicProvider implements LLMProvider {
-  constructor(private config: { apiKey: string; model: string }) {}
+  constructor(private config: { apiKey: string; model: string; promptId?: ExtractionPromptId }) {}
 
-  async extractAd(screenshot: string, adWidth: number, adHeight: number): Promise<AdElement[]> {
+  async extractAd(screenshot: string, adWidth: number, adHeight: number): Promise<ExtractionResult> {
+    const useScene = this.config.promptId === 'scene';
+    const systemPrompt = useScene ? SCENE_EXTRACTION_PROMPT : EXTRACTION_SYSTEM_PROMPT;
+    const userText = useScene
+      ? 'Analyze this advertisement image and return the exhaustive scene JSON as instructed.'
+      : `The advertisement is ${adWidth}×${adHeight} pixels. Analyze it and return the element JSON as instructed.`;
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -18,7 +25,7 @@ export class AnthropicProvider implements LLMProvider {
       body: JSON.stringify({
         model: this.config.model,
         max_tokens: 4096,
-        system: EXTRACTION_SYSTEM_PROMPT,
+        system: systemPrompt,
         messages: [
           {
             role: 'user',
@@ -27,10 +34,7 @@ export class AnthropicProvider implements LLMProvider {
                 type: 'image',
                 source: { type: 'base64', media_type: 'image/jpeg', data: screenshot },
               },
-              {
-                type: 'text',
-                text: `The advertisement is ${adWidth}×${adHeight} pixels. Analyze it and return the element JSON as instructed.`,
-              },
+              { type: 'text', text: userText },
             ],
           },
         ],
@@ -46,7 +50,10 @@ export class AnthropicProvider implements LLMProvider {
     const raw = data.content?.[0]?.text;
     if (!raw) throw new AiRefineError('Empty extraction response from Anthropic.');
 
-    return pctToPixels(parseExtractedElements(raw, 'Anthropic'), adWidth, adHeight);
+    const elements = useScene
+      ? parseSceneElements(raw, 'Anthropic')
+      : parseExtractedElements(raw, 'Anthropic');
+    return { elements: pctToPixels(elements, adWidth, adHeight), rawJson: raw };
   }
 
   async refineAd(elements: AdElement[], userRequest: string, _screenshotBase64?: string): Promise<AdElement[]> {

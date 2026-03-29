@@ -1,7 +1,8 @@
 import type { AdElement, ElementType } from '../../../types';
 import { AiRefineError } from '../../../utils/openai';
-import { SYSTEM_PROMPT, parseAdElements } from '../shared';
-import type { LLMProvider } from '../provider';
+import { SYSTEM_PROMPT, SCENE_EXTRACTION_PROMPT, parseAdElements, parseSceneElements, pctToPixels } from '../shared';
+import type { ExtractionPromptId } from '../shared';
+import type { LLMProvider, ExtractionResult } from '../provider';
 import { recordTokenUsage } from '../../storage/tokenUsage';
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -225,9 +226,44 @@ function buildAdElements(
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export class GeminiProvider implements LLMProvider {
-  constructor(private config: { apiKey: string; model: string; imageModel: string }) {}
+  constructor(private config: { apiKey: string; model: string; imageModel: string; promptId?: ExtractionPromptId }) {}
 
-  async extractAd(screenshot: string, adWidth: number, adHeight: number): Promise<AdElement[]> {
+  async extractAd(screenshot: string, adWidth: number, adHeight: number): Promise<ExtractionResult> {
+    // ── Scene descriptor: single-phase call using the shared scene prompt ─────
+    if (this.config.promptId === 'scene') {
+      const res = await fetch(
+        `${BASE}/${this.config.imageModel}:generateContent?key=${this.config.apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { inlineData: { mimeType: 'image/jpeg', data: screenshot } },
+                { text: SCENE_EXTRACTION_PROMPT },
+              ],
+            }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              maxOutputTokens: 8192,
+              temperature: 0.2,
+            },
+          }),
+        },
+      );
+      if (!res.ok) {
+        const err = await res.text();
+        throw new AiRefineError(`Gemini scene extraction error ${res.status}: ${err}`);
+      }
+      const data = await res.json();
+      const raw: string = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!raw) throw new AiRefineError('Empty scene extraction response from Gemini.');
+      const tokens = data.usageMetadata?.totalTokenCount ?? 0;
+      recordTokenUsage({ timestamp: Date.now(), provider: 'gemini', model: this.config.imageModel, operation: 'extraction', tokens });
+      const elements = pctToPixels(parseSceneElements(raw, 'Gemini'), adWidth, adHeight);
+      return { elements, rawJson: raw };
+    }
+
     // ── Phase 1: Full-image structural extraction ─────────────────────────────
     const p1Response = await fetch(
       `${BASE}/${this.config.imageModel}:generateContent?key=${this.config.apiKey}`,
@@ -309,7 +345,7 @@ export class GeminiProvider implements LLMProvider {
     console.log(`[adMorph] Gemini deep-dive tokens: ${totalDeepDiveTokens}`);
     console.log(`[adMorph] Gemini grand total tokens: ${p1Tokens + totalDeepDiveTokens}`);
 
-    return buildAdElements(items, adWidth, adHeight, bgColor);
+    return { elements: buildAdElements(items, adWidth, adHeight, bgColor), rawJson: p1Raw };
   }
 
   private async runDeepDive(croppedBase64: string): Promise<GeminiDeepDiveResult | null> {

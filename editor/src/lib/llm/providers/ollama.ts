@@ -1,17 +1,22 @@
 import type { AdElement } from '../../../types';
 import { AiRefineError } from '../../../utils/openai';
-import { SYSTEM_PROMPT, VISION_SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, parseAdElements, parseExtractedElements, pctToPixels } from '../shared';
-import type { LLMProvider } from '../provider';
+import { SYSTEM_PROMPT, VISION_SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, SCENE_EXTRACTION_PROMPT, parseAdElements, parseExtractedElements, parseSceneElements, pctToPixels } from '../shared';
+import type { ExtractionPromptId } from '../shared';
+import type { LLMProvider, ExtractionResult } from '../provider';
 
 const MAX_RETRIES = 2;
 
 export class OllamaProvider implements LLMProvider {
-  constructor(private config: { baseUrl: string; model: string }) {}
+  constructor(private config: { baseUrl: string; model: string; promptId?: ExtractionPromptId }) {}
 
-  async extractAd(screenshot: string, adWidth: number, adHeight: number): Promise<AdElement[]> {
+  async extractAd(screenshot: string, adWidth: number, adHeight: number): Promise<ExtractionResult> {
+    const useScene = this.config.promptId === 'scene';
+    const systemPrompt = useScene ? SCENE_EXTRACTION_PROMPT : EXTRACTION_SYSTEM_PROMPT;
     const userMsg = {
       role: 'user',
-      content: `The advertisement is ${adWidth}×${adHeight} pixels. Analyze it and return the element JSON as instructed.`,
+      content: useScene
+        ? 'Analyze this advertisement image and return the exhaustive scene JSON as instructed.'
+        : `The advertisement is ${adWidth}×${adHeight} pixels. Analyze it and return the element JSON as instructed.`,
       images: [screenshot],
     };
 
@@ -22,7 +27,7 @@ export class OllamaProvider implements LLMProvider {
         stream: false,
         options: { num_predict: 4096 },
         messages: [
-          { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
+          { role: 'system', content: systemPrompt },
           userMsg,
         ],
       };
@@ -49,9 +54,12 @@ export class OllamaProvider implements LLMProvider {
       if (!raw) throw new AiRefineError('Empty extraction response from Ollama.');
 
       try {
-        const parsed = pctToPixels(parseExtractedElements(raw, 'Ollama'), adWidth, adHeight);
+        const elements = useScene
+          ? parseSceneElements(raw, 'Ollama')
+          : parseExtractedElements(raw, 'Ollama');
+        const parsed = pctToPixels(elements, adWidth, adHeight);
         console.log('[Ollama extractAd] PARSED ELEMENTS →', JSON.parse(JSON.stringify(parsed)));
-        return parsed;
+        return { elements: parsed, rawJson: raw };
       } catch (err) {
         if (attempt === MAX_RETRIES) throw err;
       }

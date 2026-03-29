@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Settings } from 'lucide-react';
 import { useAdStore } from './store';
 import { loadAndMergeAds, registerPostMessageListener } from './loader';
 import { Canvas } from './components/Canvas';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, JsonPanel } from './components/Sidebar';
 import { AiRefiner } from './components/AiRefiner';
 import { SettingsPanel } from './components/SettingsPanel/SettingsPanel';
 import { useSettings } from './hooks/useSettings';
@@ -16,12 +16,35 @@ export default function App() {
   const setAds = useAdStore((s) => s.setAds);
   const addAd = useAdStore((s) => s.addAd);
   const setAdElements = useAdStore((s) => s.setAdElements);
+  const setAdRawJson = useAdStore((s) => s.setAdRawJson);
   const setAdExtracting = useAdStore((s) => s.setAdExtracting);
   const setAdExtractionError = useAdStore((s) => s.setAdExtractionError);
   const setAdScreenshot = useAdStore((s) => s.setAdScreenshot);
   const reExtractRequestId = useAdStore((s) => s.reExtractRequestId);
   const clearReExtractRequest = useAdStore((s) => s.clearReExtractRequest);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [jsonOpen, setJsonOpen] = useState(false);
+  const ads = useAdStore((s) => s.ads);
+  const selectedAdId = useAdStore((s) => s.selectedAdId);
+  const adRawJsons = useAdStore((s) => s.adRawJsons);
+  const activeAd = ads.find((a) => a.id === selectedAdId) ?? ads[ads.length - 1] ?? null;
+  const [sidebarWidth, setSidebarWidth] = useState(288);
+  const dragState = useRef<{ startX: number; startW: number } | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragState.current) return;
+      const delta = dragState.current.startX - e.clientX;
+      setSidebarWidth(Math.max(220, Math.min(600, dragState.current.startW + delta)));
+    };
+    const onUp = () => { dragState.current = null; };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, []);
   const { settings, updateSettings } = useSettings();
 
   // ── Vision extraction ──────────────────────────────────────────────────────
@@ -35,7 +58,8 @@ export default function App() {
     setAdExtracting(ad.id, true);
     try {
       const provider = getProvider(settings);
-      const extracted = await provider.extractAd(screenshot, adW, adH);
+      const { elements: extracted, rawJson } = await provider.extractAd(screenshot, adW, adH);
+      setAdRawJson(ad.id, rawJson);
       // Only apply if the model returned more than just the root container —
       // a single-element result means extraction didn't really work; keep the DOM capture.
       if (extracted.length > 1) {
@@ -50,7 +74,7 @@ export default function App() {
     } finally {
       setAdExtracting(ad.id, false);
     }
-  }, [settings, setAdElements, setAdExtracting, setAdExtractionError]);
+  }, [settings, setAdElements, setAdRawJson, setAdExtracting, setAdExtractionError]);
 
   // ── Initial load ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -124,11 +148,31 @@ export default function App() {
         <main className="flex-1 overflow-hidden">
           <Canvas />
         </main>
-        <div className="flex flex-col w-72 shrink-0 border-l border-slate-700 overflow-hidden">
-          <div className="flex-1 overflow-hidden">
-            <Sidebar />
+        <div className="flex shrink-0 overflow-hidden" style={{ width: sidebarWidth }}>
+          {/* Drag handle — overlaps the left border */}
+          <div
+            className="w-1 shrink-0 cursor-col-resize hover:bg-blue-500/50 transition-colors bg-slate-700"
+            onMouseDown={(e) => {
+              dragState.current = { startX: e.clientX, startW: sidebarWidth };
+              e.preventDefault();
+            }}
+          />
+          <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+            {jsonOpen && activeAd ? (
+              <JsonPanel
+                ad={activeAd}
+                rawJson={adRawJsons[activeAd.id]}
+                onClose={() => setJsonOpen(false)}
+              />
+            ) : (
+              <>
+                <div className="flex-1 overflow-hidden">
+                  <Sidebar onOpenJson={() => setJsonOpen(true)} />
+                </div>
+                <AiRefiner settings={settings} />
+              </>
+            )}
           </div>
-          <AiRefiner settings={settings} />
         </div>
       </div>
 

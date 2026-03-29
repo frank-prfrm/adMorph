@@ -10,7 +10,9 @@ interface AdStore {
   extractingAdIds: string[];
   extractionErrors: Record<string, string>;
   adScreenshots: Record<string, string>;
+  adRawJsons: Record<string, string>;
   reExtractRequestId: string | null;
+  detectionRequestId: string | null;
 
   setAds: (ads: CapturedAd[]) => void;
   addAd: (ad: CapturedAd) => void;
@@ -18,6 +20,7 @@ interface AdStore {
   updateElement: (adId: string, elementId: string, patch: Partial<AdElement>) => void;
   selectElement: (adId: string | null, elementId: string | null) => void;
   setAdElements: (adId: string, elements: AdElement[]) => void;
+  setAdRawJson: (adId: string, rawJson: string) => void;
   revertAd: (adId: string) => void;
   setAdExtracting: (adId: string, extracting: boolean) => void;
   setAdExtractionError: (adId: string, error: string) => void;
@@ -25,6 +28,8 @@ interface AdStore {
   setAdScreenshot: (adId: string, screenshot: string) => void;
   requestReExtract: (adId: string) => void;
   clearReExtractRequest: () => void;
+  requestDetection: (adId: string) => void;
+  clearDetectionRequest: () => void;
   undo: () => void;
 }
 
@@ -36,7 +41,9 @@ export const useAdStore = create<AdStore>((set) => ({
   extractingAdIds: [],
   extractionErrors: {},
   adScreenshots: loadStoredScreenshots(),
+  adRawJsons: {},
   reExtractRequestId: null,
+  detectionRequestId: null,
 
   setAds: (ads) => {
     const hydrated = ads.map((ad) => ({
@@ -106,6 +113,9 @@ export const useAdStore = create<AdStore>((set) => ({
       return { previousAds: state.ads, ads };
     }),
 
+  setAdRawJson: (adId, rawJson) =>
+    set((state) => ({ adRawJsons: { ...state.adRawJsons, [adId]: rawJson } })),
+
   revertAd: (adId) =>
     set((state) => {
       const ads = state.ads.map((ad) =>
@@ -141,6 +151,10 @@ export const useAdStore = create<AdStore>((set) => ({
   requestReExtract: (adId) => set({ reExtractRequestId: adId }),
 
   clearReExtractRequest: () => set({ reExtractRequestId: null }),
+
+  requestDetection: (adId) => set({ detectionRequestId: adId }),
+
+  clearDetectionRequest: () => set({ detectionRequestId: null }),
 
   undo: () =>
     set((state) => {
