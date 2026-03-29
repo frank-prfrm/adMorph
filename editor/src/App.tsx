@@ -3,7 +3,7 @@ import { Settings } from 'lucide-react';
 import { useAdStore } from './store';
 import { loadAndMergeAds, registerPostMessageListener } from './loader';
 import { Canvas } from './components/Canvas';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, JsonPanel } from './components/Sidebar';
 import { AiRefiner } from './components/AiRefiner';
 import { SettingsPanel } from './components/SettingsPanel/SettingsPanel';
 import { useSettings } from './hooks/useSettings';
@@ -23,6 +23,11 @@ export default function App() {
   const reExtractRequestId = useAdStore((s) => s.reExtractRequestId);
   const clearReExtractRequest = useAdStore((s) => s.clearReExtractRequest);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [jsonOpen, setJsonOpen] = useState(false);
+  const ads = useAdStore((s) => s.ads);
+  const selectedAdId = useAdStore((s) => s.selectedAdId);
+  const adRawJsons = useAdStore((s) => s.adRawJsons);
+  const activeAd = ads.find((a) => a.id === selectedAdId) ?? ads[ads.length - 1] ?? null;
   const [sidebarWidth, setSidebarWidth] = useState(288);
   const dragState = useRef<{ startX: number; startW: number } | null>(null);
 
@@ -153,10 +158,20 @@ export default function App() {
             }}
           />
           <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-            <div className="flex-1 overflow-hidden">
-              <Sidebar />
-            </div>
-            <AiRefiner settings={settings} />
+            {jsonOpen && activeAd ? (
+              <JsonPanel
+                ad={activeAd}
+                rawJson={adRawJsons[activeAd.id]}
+                onClose={() => setJsonOpen(false)}
+              />
+            ) : (
+              <>
+                <div className="flex-1 overflow-hidden">
+                  <Sidebar onOpenJson={() => setJsonOpen(true)} />
+                </div>
+                <AiRefiner settings={settings} />
+              </>
+            )}
           </div>
         </div>
       </div>

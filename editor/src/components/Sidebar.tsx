@@ -5,7 +5,7 @@ import { useSettings } from '../hooks/useSettings';
 import { EXTRACTION_PROMPTS } from '../lib/llm/shared';
 import type { AdElementStyles, CapturedAd } from '../types';
 
-export function Sidebar() {
+export function Sidebar({ onOpenJson }: { onOpenJson: () => void }) {
   const ads = useAdStore((s) => s.ads);
   const selectedAdId = useAdStore((s) => s.selectedAdId);
   const selectedElementId = useAdStore((s) => s.selectedElementId);
@@ -25,8 +25,6 @@ export function Sidebar() {
   const activeAd = selectedAd ?? ads[ads.length - 1] ?? null;
   const isExtracting = !!activeAd && extractingAdIds.includes(activeAd.id);
   const extractionError = activeAd ? (extractionErrors[activeAd.id] ?? null) : null;
-
-  const [jsonOpen, setJsonOpen] = useState(false);
 
   const updateStyle = (key: keyof AdElementStyles, value: string | number) => {
     if (!selected || !selectedAdId) return;
@@ -54,14 +52,6 @@ export function Sidebar() {
   const isBackground = !!activeAd && selected?.id === activeAd.elements[0]?.id;
   const { settings } = useSettings();
   const promptLabel = EXTRACTION_PROMPTS[settings.extractionPromptId]?.label ?? 'Element Extractor';
-
-  if (jsonOpen && activeAd) {
-    return (
-      <aside className="w-full bg-slate-900 flex flex-col h-full overflow-hidden">
-        <JsonPanel ad={activeAd} rawJson={adRawJsons[activeAd.id]} onClose={() => setJsonOpen(false)} />
-      </aside>
-    );
-  }
 
   return (
     <aside className="w-full bg-slate-900 flex flex-col h-full overflow-hidden">
@@ -274,7 +264,7 @@ export function Sidebar() {
                 <button
                   title="View JSON"
                   className="text-xs font-mono text-slate-500 hover:text-slate-200 transition-colors px-1"
-                  onClick={() => setJsonOpen(true)}
+                  onClick={onOpenJson}
                 >
                   {'{JSON}'}
                 </button>
@@ -375,7 +365,7 @@ function ExtractionBanner({
 
 // ── Inline JSON panel (replaces sidebar content) ─────────────────────────────
 
-function JsonPanel({ ad, rawJson, onClose }: { ad: CapturedAd; rawJson?: string; onClose: () => void }) {
+export function JsonPanel({ ad, rawJson, onClose }: { ad: CapturedAd; rawJson?: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<'elements' | 'raw'>(rawJson ? 'raw' : 'elements');
 
