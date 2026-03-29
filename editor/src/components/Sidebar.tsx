@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Copy, Check, X, Braces, RefreshCw, ImagePlus } from 'lucide-react';
+import { Copy, Check, X, RefreshCw, ImagePlus } from 'lucide-react';
 import { useAdStore } from '../store';
 import { useSettings } from '../hooks/useSettings';
 import { EXTRACTION_PROMPTS } from '../lib/llm/shared';
@@ -55,8 +55,16 @@ export function Sidebar() {
   const { settings } = useSettings();
   const promptLabel = EXTRACTION_PROMPTS[settings.extractionPromptId]?.label ?? 'Element Extractor';
 
+  if (jsonOpen && activeAd) {
+    return (
+      <aside className="w-full bg-slate-900 flex flex-col h-full overflow-hidden">
+        <JsonPanel ad={activeAd} rawJson={adRawJsons[activeAd.id]} onClose={() => setJsonOpen(false)} />
+      </aside>
+    );
+  }
+
   return (
-    <aside className="w-72 bg-slate-900 border-l border-slate-700 flex flex-col h-full overflow-hidden">
+    <aside className="w-full bg-slate-900 flex flex-col h-full overflow-hidden">
       <header className="px-4 py-3 border-b border-slate-700 shrink-0">
         <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wider">
           Properties
@@ -265,10 +273,10 @@ export function Sidebar() {
                 </button>
                 <button
                   title="View JSON"
-                  className="text-slate-500 hover:text-slate-200 transition-colors"
+                  className="text-xs font-mono text-slate-500 hover:text-slate-200 transition-colors px-1"
                   onClick={() => setJsonOpen(true)}
                 >
-                  <Braces size={13} />
+                  {'{JSON}'}
                 </button>
               </div>
             </header>
@@ -304,11 +312,6 @@ export function Sidebar() {
         )}
 
       </div>
-
-      {/* JSON viewer modal */}
-      {jsonOpen && activeAd && (
-        <JsonModal ad={activeAd} rawJson={adRawJsons[activeAd.id]} onClose={() => setJsonOpen(false)} />
-      )}
     </aside>
   );
 }
@@ -370,9 +373,9 @@ function ExtractionBanner({
   return null;
 }
 
-// ── JSON viewer modal ─────────────────────────────────────────────────────────
+// ── Inline JSON panel (replaces sidebar content) ─────────────────────────────
 
-function JsonModal({ ad, rawJson, onClose }: { ad: CapturedAd; rawJson?: string; onClose: () => void }) {
+function JsonPanel({ ad, rawJson, onClose }: { ad: CapturedAd; rawJson?: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<'elements' | 'raw'>(rawJson ? 'raw' : 'elements');
 
@@ -391,57 +394,49 @@ function JsonModal({ ad, rawJson, onClose }: { ad: CapturedAd; rawJson?: string;
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
-      <div
-        className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl flex flex-col"
-        style={{ width: 'min(720px, 90vw)', maxHeight: '80vh' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-700 shrink-0">
-          <div className="flex items-center gap-3">
-            {rawJson && (
-              <>
-                <button
-                  className={`text-xs font-medium px-2 py-0.5 rounded transition-colors ${tab === 'raw' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                  onClick={() => setTab('raw')}
-                >
-                  LLM Response
-                </button>
-                <button
-                  className={`text-xs font-medium px-2 py-0.5 rounded transition-colors ${tab === 'elements' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                  onClick={() => setTab('elements')}
-                >
-                  Elements
-                </button>
-              </>
-            )}
-            {!rawJson && (
-              <span className="text-sm font-semibold text-slate-200">
-                Elements JSON
-                <span className="ml-2 text-xs font-normal text-slate-500">
-                  {ad.elements.length} element{ad.elements.length !== 1 ? 's' : ''}
-                </span>
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
-              onClick={handleCopy}
-            >
-              {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
-              {copied ? 'Copied' : 'Copy'}
-            </button>
-            <button className="text-slate-400 hover:text-slate-200" onClick={onClose}>
-              <X size={16} />
-            </button>
-          </div>
+    <>
+      <header className="px-4 py-3 border-b border-slate-700 shrink-0 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {rawJson ? (
+            <>
+              <button
+                className={`text-xs font-medium px-2 py-0.5 rounded transition-colors ${tab === 'raw' ? 'bg-purple-600 text-white' : 'text-slate-500 hover:text-slate-200'}`}
+                onClick={() => setTab('raw')}
+              >
+                LLM Response
+              </button>
+              <button
+                className={`text-xs font-medium px-2 py-0.5 rounded transition-colors ${tab === 'elements' ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-200'}`}
+                onClick={() => setTab('elements')}
+              >
+                Elements
+              </button>
+            </>
+          ) : (
+            <span className="text-sm font-semibold text-slate-200 uppercase tracking-wider text-xs">JSON</span>
+          )}
         </div>
-        <pre className="flex-1 overflow-auto p-5 text-xs text-slate-300 leading-relaxed font-mono">
-          {activeJson}
-        </pre>
-      </div>
-    </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-200 transition-colors"
+            onClick={handleCopy}
+          >
+            {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+          <button
+            title="Close JSON view"
+            className="text-slate-500 hover:text-slate-200 transition-colors"
+            onClick={onClose}
+          >
+            <X size={15} />
+          </button>
+        </div>
+      </header>
+      <pre className="flex-1 overflow-auto p-4 text-xs text-slate-300 leading-relaxed font-mono">
+        {activeJson}
+      </pre>
+    </>
   );
 }
 
