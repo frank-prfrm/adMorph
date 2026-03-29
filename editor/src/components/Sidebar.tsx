@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Copy, Check, X, RefreshCw, ImagePlus } from 'lucide-react';
 import { useAdStore } from '../store';
 import { useSettings } from '../hooks/useSettings';
@@ -16,6 +16,7 @@ export function Sidebar({ onOpenJson }: { onOpenJson: () => void }) {
   const clearAdExtractionError = useAdStore((s) => s.clearAdExtractionError);
   const revertAd = useAdStore((s) => s.revertAd);
   const requestReExtract = useAdStore((s) => s.requestReExtract);
+  const requestDetection = useAdStore((s) => s.requestDetection);
   const adScreenshots = useAdStore((s) => s.adScreenshots);
   const adRawJsons = useAdStore((s) => s.adRawJsons);
 
@@ -52,6 +53,21 @@ export function Sidebar({ onOpenJson }: { onOpenJson: () => void }) {
   const isBackground = !!activeAd && selected?.id === activeAd.elements[0]?.id;
   const { settings } = useSettings();
   const promptLabel = EXTRACTION_PROMPTS[settings.extractionPromptId]?.label ?? 'Element Extractor';
+  const [layersTab, setLayersTab] = useState<'layers' | 'objects'>('layers');
+
+  // Parse scene objects from rawJson when scene descriptor was used
+  const sceneObjects = useMemo(() => {
+    if (!activeAd) return null;
+    const raw = adRawJsons[activeAd.id];
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed.objects) || parsed.objects.length === 0) return null;
+      return parsed.objects as Array<{ label?: string; category?: string; text_content?: { raw_text?: string } }>;
+    } catch {
+      return null;
+    }
+  }, [activeAd, adRawJsons]);
 
   return (
     <aside className="w-full bg-slate-900 flex flex-col h-full overflow-hidden">
@@ -240,11 +256,27 @@ export function Sidebar({ onOpenJson }: { onOpenJson: () => void }) {
         {activeAd && (
           <div className="flex-1 flex flex-col border-t border-slate-700 overflow-hidden min-h-0">
             <header className="px-4 py-2 flex items-center justify-between shrink-0">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Layers
-              </span>
+              {/* Tab toggle: show Objects tab only when scene objects exist */}
+              <div className="flex items-center gap-1">
+                <button
+                  className={`text-xs font-semibold px-2 py-0.5 rounded transition-colors ${layersTab === 'layers' ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
+                  onClick={() => setLayersTab('layers')}
+                >
+                  Layers
+                </button>
+                {sceneObjects && (
+                  <button
+                    className={`text-xs font-semibold px-2 py-0.5 rounded transition-colors ${layersTab === 'objects' ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
+                    onClick={() => setLayersTab('objects')}
+                  >
+                    Objects
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-600">{activeAd.elements.length}</span>
+                {layersTab === 'layers' && (
+                  <span className="text-xs text-slate-600">{activeAd.elements.length}</span>
+                )}
                 {adScreenshots[activeAd.id] && !isExtracting && (
                   <button
                     title="Re-run AI extraction"
@@ -270,34 +302,65 @@ export function Sidebar({ onOpenJson }: { onOpenJson: () => void }) {
                 </button>
               </div>
             </header>
-            <ul className="flex-1 overflow-y-auto">
-              {[...activeAd.elements].reverse().map((el) => {
-                const isBg = el.id === activeAd.elements[0]?.id;
-                return (
-                  <li
-                    key={el.id}
-                    className={`px-4 py-1.5 text-xs cursor-pointer flex items-center gap-2 hover:bg-slate-800 ${
-                      el.id === selectedElementId ? 'bg-slate-800 text-blue-400' : 'text-slate-400'
-                    }`}
-                    onClick={() => selectElement(activeAd.id, el.id)}
-                  >
-                    <span className="w-16 shrink-0 font-mono text-slate-600">
-                      {isBg ? 'bg' : el.type}
-                    </span>
-                    {isBg
-                      ? <span className="flex items-center gap-1.5 truncate">
-                          <span
-                            className="w-3 h-3 rounded-sm shrink-0 border border-slate-600"
-                            style={{ background: el.styles.backgroundColor }}
-                          />
-                          Background
-                        </span>
-                      : <span className="truncate">{el.content || el.id}</span>
-                    }
-                  </li>
-                );
-              })}
-            </ul>
+
+            {/* Layers list */}
+            {layersTab === 'layers' && (
+              <ul className="flex-1 overflow-y-auto">
+                {[...activeAd.elements].reverse().map((el) => {
+                  const isBg = el.id === activeAd.elements[0]?.id;
+                  return (
+                    <li
+                      key={el.id}
+                      className={`px-4 py-1.5 text-xs cursor-pointer flex items-center gap-2 hover:bg-slate-800 ${
+                        el.id === selectedElementId ? 'bg-slate-800 text-blue-400' : 'text-slate-400'
+                      }`}
+                      onClick={() => selectElement(activeAd.id, el.id)}
+                    >
+                      <span className="w-16 shrink-0 font-mono text-slate-600">
+                        {isBg ? 'bg' : el.type}
+                      </span>
+                      {isBg
+                        ? <span className="flex items-center gap-1.5 truncate">
+                            <span
+                              className="w-3 h-3 rounded-sm shrink-0 border border-slate-600"
+                              style={{ background: el.styles.backgroundColor }}
+                            />
+                            Background
+                          </span>
+                        : <span className="truncate">{el.content || el.id}</span>
+                      }
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {/* Objects list — scene descriptor results */}
+            {layersTab === 'objects' && sceneObjects && (
+              <ul className="flex-1 overflow-y-auto">
+                {sceneObjects.map((obj, i) => {
+                  const elId = `el-${i + 1}`;
+                  const isSelected = elId === selectedElementId;
+                  const label = obj.label ?? obj.text_content?.raw_text ?? elId;
+                  const category = obj.category ?? '';
+                  return (
+                    <li
+                      key={elId}
+                      className={`px-4 py-1.5 text-xs cursor-pointer flex items-center gap-2 hover:bg-slate-800 ${
+                        isSelected ? 'bg-slate-800 text-blue-400' : 'text-slate-400'
+                      }`}
+                      onClick={() => {
+                        selectElement(activeAd.id, elId);
+                        requestDetection(activeAd.id);
+                      }}
+                    >
+                      <span className="w-16 shrink-0 font-mono text-slate-600 truncate">{category}</span>
+                      <span className="truncate">{label}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         )}
 

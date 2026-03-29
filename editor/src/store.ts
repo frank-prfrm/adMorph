@@ -12,6 +12,7 @@ interface AdStore {
   adScreenshots: Record<string, string>;
   adRawJsons: Record<string, string>;
   reExtractRequestId: string | null;
+  detectionRequestId: string | null;
 
   setAds: (ads: CapturedAd[]) => void;
   addAd: (ad: CapturedAd) => void;
@@ -27,6 +28,8 @@ interface AdStore {
   setAdScreenshot: (adId: string, screenshot: string) => void;
   requestReExtract: (adId: string) => void;
   clearReExtractRequest: () => void;
+  requestDetection: (adId: string) => void;
+  clearDetectionRequest: () => void;
   undo: () => void;
 }
 
@@ -40,6 +43,7 @@ export const useAdStore = create<AdStore>((set) => ({
   adScreenshots: loadStoredScreenshots(),
   adRawJsons: {},
   reExtractRequestId: null,
+  detectionRequestId: null,
 
   setAds: (ads) => {
     const hydrated = ads.map((ad) => ({
@@ -147,6 +151,10 @@ export const useAdStore = create<AdStore>((set) => ({
   requestReExtract: (adId) => set({ reExtractRequestId: adId }),
 
   clearReExtractRequest: () => set({ reExtractRequestId: null }),
+
+  requestDetection: (adId) => set({ detectionRequestId: adId }),
+
+  clearDetectionRequest: () => set({ detectionRequestId: null }),
 
   undo: () =>
     set((state) => {

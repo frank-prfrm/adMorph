@@ -95,6 +95,8 @@ interface AdBlockProps {
 
 function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, screenshot, onSelectElement, onRemove }: AdBlockProps) {
   const updateElement = useAdStore((s) => s.updateElement);
+  const detectionRequestId = useAdStore((s) => s.detectionRequestId);
+  const clearDetectionRequest = useAdStore((s) => s.clearDetectionRequest);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showDetection, setShowDetection] = useState(false);
 
@@ -106,6 +108,14 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, screensh
     }
     prevExtractingRef.current = isExtracting;
   }, [isExtracting, screenshot]);
+
+  // Enable detection view when an object is selected from the Objects tab
+  useEffect(() => {
+    if (detectionRequestId === ad.id) {
+      setShowDetection(true);
+      clearDetectionRequest();
+    }
+  }, [detectionRequestId, ad.id, clearDetectionRequest]);
 
   const backgroundId = ad.elements[0]?.id;
 
