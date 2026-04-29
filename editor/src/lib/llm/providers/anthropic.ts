@@ -24,7 +24,7 @@ export class AnthropicProvider implements LLMProvider {
       },
       body: JSON.stringify({
         model: this.config.model,
-        max_tokens: useScene ? 16384 : 4096,
+        max_tokens: useScene ? 32768 : 4096,
         system: systemPrompt,
         messages: [
           {
@@ -52,20 +52,37 @@ export class AnthropicProvider implements LLMProvider {
 
     const data = await response.json();
     const rawCompletion = data.content?.[0]?.text;
-    if (!rawCompletion) throw new AiRefineError('Empty extraction response from Anthropic.');
 
-    if (data.stop_reason === 'max_tokens') {
-      console.error('[Anthropic] response truncated at max_tokens. Raw (last 300 chars):', rawCompletion.slice(-300));
-      throw new AiRefineError('Anthropic response was truncated (max_tokens reached). Try a smaller image or simpler ad.');
-    }
+    console.group(`[Anthropic extractAd] response (mode=${useScene ? 'scene' : 'elements'})`);
+    console.log('stop_reason:', data.stop_reason);
+    console.log('usage:', data.usage);
+    console.log('completion length (chars):', rawCompletion?.length ?? 0);
+    console.log('completion (first 800):', rawCompletion?.slice(0, 800));
+    console.log('completion (last 400):', rawCompletion?.slice(-400));
+    console.groupEnd();
+
+    if (!rawCompletion) throw new AiRefineError('Empty extraction response from Anthropic.');
 
     // Re-attach the prefilled `{` so the parser sees a complete JSON object.
     const raw = '{' + rawCompletion;
 
-    const elements = useScene
-      ? parseSceneElements(raw, 'Anthropic')
-      : parseExtractedElements(raw, 'Anthropic');
-    return { elements: pctToPixels(elements, adWidth, adHeight), rawJson: raw };
+    if (data.stop_reason === 'max_tokens') {
+      throw new AiRefineError(
+        `Anthropic response truncated (max_tokens=${useScene ? 32768 : 4096} reached). The scene schema is very large — try Element Extractor instead, or raise max_tokens.`
+      );
+    }
+
+    try {
+      const elements = useScene
+        ? parseSceneElements(raw, 'Anthropic')
+        : parseExtractedElements(raw, 'Anthropic');
+      return { elements: pctToPixels(elements, adWidth, adHeight), rawJson: raw };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const head = raw.slice(0, 300).replace(/\s+/g, ' ');
+      const tail = raw.slice(-300).replace(/\s+/g, ' ');
+      throw new AiRefineError(`${msg} | head: ${head} | tail: ${tail}`);
+    }
   }
 
   async refineAd(elements: AdElement[], userRequest: string, _screenshotBase64?: string): Promise<AdElement[]> {
