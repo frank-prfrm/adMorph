@@ -2,9 +2,7 @@ import type { ExtractionPromptId } from '../llm/shared';
 
 export interface AppSettings {
   llm: {
-    provider: 'ollama' | 'anthropic' | 'openai' | 'gemini';
-    ollamaBaseUrl: string;
-    ollamaModel: string;
+    provider: 'anthropic' | 'openai' | 'gemini';
     anthropicApiKey: string;
     anthropicModel: string;
     openaiApiKey: string;
@@ -22,9 +20,7 @@ const STORAGE_KEY = 'admorph_settings';
 
 const DEFAULTS: AppSettings = {
   llm: {
-    provider: 'openai',
-    ollamaBaseUrl: 'http://localhost:11434',
-    ollamaModel: 'llama3.2-vision',
+    provider: 'anthropic',
     anthropicApiKey: '',
     anthropicModel: 'claude-opus-4-6',
     openaiApiKey: '',
@@ -38,16 +34,22 @@ const DEFAULTS: AppSettings = {
   supabaseEnabled: false,
 };
 
+const VALID_PROVIDERS: AppSettings['llm']['provider'][] = ['anthropic', 'openai', 'gemini'];
+
 export function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULTS, llm: { ...DEFAULTS.llm } };
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
-    return {
+    const merged: AppSettings = {
       ...DEFAULTS,
       ...parsed,
       llm: { ...DEFAULTS.llm, ...parsed.llm },
     };
+    if (!VALID_PROVIDERS.includes(merged.llm.provider)) {
+      merged.llm.provider = DEFAULTS.llm.provider;
+    }
+    return merged;
   } catch {
     return { ...DEFAULTS, llm: { ...DEFAULTS.llm } };
   }

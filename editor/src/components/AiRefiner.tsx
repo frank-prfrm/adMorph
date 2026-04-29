@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Sparkles, Undo2, AlertCircle, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
-import html2canvas from 'html2canvas';
 import { useAdStore } from '../store';
 import { AiRefineError } from '../utils/openai';
 import { getProvider } from '../lib/llm/factory';
@@ -27,8 +26,8 @@ export function AiRefiner({ settings }: Props) {
 
   const isReady = () => {
     const { llm } = settings;
-    if (llm.provider === 'ollama') return !!llm.ollamaBaseUrl;
     if (llm.provider === 'anthropic') return !!llm.anthropicApiKey;
+    if (llm.provider === 'gemini') return !!llm.geminiApiKey;
     return !!llm.openaiApiKey;
   };
 
@@ -37,16 +36,8 @@ export function AiRefiner({ settings }: Props) {
     setLoading(true);
     setError(null);
     try {
-      let screenshotBase64: string | undefined;
-      if (settings.llm.provider === 'ollama') {
-        const el = document.querySelector<HTMLElement>(`[data-ad-id="${selectedAd.id}"]`);
-        if (el) {
-          const cvs = await html2canvas(el, { useCORS: true, scale: 1 });
-          screenshotBase64 = cvs.toDataURL('image/jpeg', 0.85).split(',')[1];
-        }
-      }
       const provider = getProvider(settings);
-      const refined = await provider.refineAd(selectedAd.elements, prompt, screenshotBase64);
+      const refined = await provider.refineAd(selectedAd.elements, prompt);
       setAdElements(selectedAd.id, refined);
       setPrompt('');
     } catch (err) {

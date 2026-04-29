@@ -5,7 +5,6 @@ import { EXTRACTION_PROMPTS } from '../../lib/llm/shared';
 import type { ExtractionPromptId } from '../../lib/llm/shared';
 import { getProvider } from '../../lib/llm/factory';
 import { useProviderHealth } from '../../hooks/useProviderHealth';
-import { useOllamaModels } from '../../hooks/useOllamaModels';
 import { getTokensForProvider, getTokenUsage } from '../../lib/storage/tokenUsage';
 
 function fmt(n: number): string {
@@ -52,10 +51,6 @@ export function SettingsPanel({ settings, onSave, onClose }: Props) {
 
   const setLlm = (patch: Partial<AppSettings['llm']>) =>
     setDraft((d) => ({ ...d, llm: { ...d.llm, ...patch } }));
-
-  const { models: ollamaModels, status: ollamaStatus } = useOllamaModels(
-    llm.provider === 'ollama' ? llm.ollamaBaseUrl : ''
-  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -112,7 +107,7 @@ export function SettingsPanel({ settings, onSave, onClose }: Props) {
           <div>
             <label className="field-label mb-2 block">Provider</label>
             <div className="flex gap-3">
-              {(['ollama', 'anthropic', 'openai', 'gemini'] as const).map((p) => (
+              {(['anthropic', 'openai', 'gemini'] as const).map((p) => (
                 <label key={p} className="flex items-center gap-1.5 cursor-pointer text-sm text-slate-300">
                   <input
                     type="radio"
@@ -127,56 +122,6 @@ export function SettingsPanel({ settings, onSave, onClose }: Props) {
               ))}
             </div>
           </div>
-
-          {/* Ollama fields */}
-          {llm.provider === 'ollama' && (
-            <div className="space-y-3">
-              <TokenUsageRow provider="ollama" />
-              <div>
-                <label className="field-label">Base URL</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    className="input flex-1"
-                    value={llm.ollamaBaseUrl}
-                    onChange={(e) => setLlm({ ollamaBaseUrl: e.target.value })}
-                  />
-                  {ollamaStatus === 'checking' && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse shrink-0" title="Checking…" />
-                  )}
-                  {ollamaStatus === 'ok' && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-green-400 shrink-0" title="Reachable" />
-                  )}
-                  {ollamaStatus === 'error' && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" title="Unreachable" />
-                  )}
-                </div>
-              </div>
-              <div>
-                <label className="field-label">Model</label>
-                {ollamaModels.length > 0 ? (
-                  <select
-                    className="input"
-                    value={llm.ollamaModel}
-                    onChange={(e) => setLlm({ ollamaModel: e.target.value })}
-                  >
-                    {!ollamaModels.includes(llm.ollamaModel) && llm.ollamaModel && (
-                      <option value={llm.ollamaModel}>{llm.ollamaModel}</option>
-                    )}
-                    {ollamaModels.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    className="input"
-                    value={llm.ollamaModel}
-                    placeholder={ollamaStatus === 'error' ? 'Ollama unreachable — enter model name manually' : 'e.g. llama3.2-vision'}
-                    onChange={(e) => setLlm({ ollamaModel: e.target.value })}
-                  />
-                )}
-              </div>
-            </div>
-          )}
 
           {/* Anthropic fields */}
           {llm.provider === 'anthropic' && (
@@ -273,13 +218,10 @@ export function SettingsPanel({ settings, onSave, onClose }: Props) {
             </div>
           )}
 
-          {/* Health status — only shown for cloud providers; Ollama uses the inline URL indicator */}
-          {llm.provider !== 'ollama' && (
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <HealthIndicator settings={draft} />
-              <span>Provider health</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <HealthIndicator settings={draft} />
+            <span>Provider health</span>
+          </div>
         </div>
 
         {/* Token usage + max tokens */}

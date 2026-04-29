@@ -221,16 +221,42 @@ function mapFontWeight(fw: string | undefined): string {
 }
 
 /**
+ * Extract a JSON object/array from raw model output that may contain markdown
+ * fences or surrounding prose. Tries the trimmed string first, then falls back
+ * to slicing from the first `{`/`[` to the matching last `}`/`]`.
+ */
+function extractJsonBlob(raw: string): string {
+  const stripped = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+  try {
+    JSON.parse(stripped);
+    return stripped;
+  } catch {
+    // fall through to slice-based recovery
+  }
+  const firstBrace = raw.indexOf('{');
+  const firstBracket = raw.indexOf('[');
+  const start = firstBrace === -1 ? firstBracket
+              : firstBracket === -1 ? firstBrace
+              : Math.min(firstBrace, firstBracket);
+  const lastBrace = raw.lastIndexOf('}');
+  const lastBracket = raw.lastIndexOf(']');
+  const end = Math.max(lastBrace, lastBracket);
+  if (start === -1 || end === -1 || end <= start) return stripped;
+  return raw.slice(start, end + 1).trim();
+}
+
+/**
  * Parse the exhaustive scene JSON (returned by SCENE_EXTRACTION_PROMPT) into AdElement[].
  * Coordinates are in 0–1 bounding_box_percentage → multiply by 100 → feed to pctToPixels.
  */
 export function parseSceneElements(raw: string, providerName: string): AdElement[] {
-  const cleaned = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+  const cleaned = extractJsonBlob(raw);
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(cleaned) as Record<string, unknown>;
   } catch {
-    throw new AiRefineError(`${providerName} returned invalid JSON for scene extraction.`);
+    console.error(`[${providerName}] scene JSON parse failed. Raw response (first 500 chars):`, raw.slice(0, 500), '...last 500:', raw.slice(-500));
+    throw new AiRefineError(`${providerName} returned invalid JSON for scene extraction. The response may have been truncated — check the console for the raw output.`);
   }
 
   const objects = parsed.objects as Array<Record<string, unknown>> | undefined;
@@ -319,12 +345,13 @@ export function pctToPixels(elements: AdElement[], adW: number, adH: number): Ad
 }
 
 export function parseExtractedElements(raw: string, providerName: string): AdElement[] {
-  const cleaned = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+  const cleaned = extractJsonBlob(raw);
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
   } catch {
+    console.error(`[${providerName}] extraction JSON parse failed. Raw response (first 500 chars):`, raw.slice(0, 500), '...last 500:', raw.slice(-500));
     throw new AiRefineError(`${providerName} returned invalid JSON during extraction.`);
   }
 
@@ -337,13 +364,13 @@ export function parseExtractedElements(raw: string, providerName: string): AdEle
 }
 
 export function parseAdElements(raw: string, original: AdElement[], providerName: string): AdElement[] {
-  // Strip markdown fences if model ignores instructions
-  const cleaned = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+  const cleaned = extractJsonBlob(raw);
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
   } catch {
+    console.error(`[${providerName}] refine JSON parse failed. Raw (first 500 chars):`, raw.slice(0, 500), '...last 500:', raw.slice(-500));
     throw new AiRefineError(`${providerName} returned invalid JSON.`);
   }
 
