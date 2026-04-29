@@ -6,7 +6,11 @@ A two-part tool for capturing, inspecting, and AI-restyling live web ads.
 
 **Chrome Extension** → hover over any ad on any page → click to capture its full DOM tree as structured JSON → **React Editor** opens automatically with the ad rendered as an editable canvas.
 
-Multiple captures accumulate in the editor. Each ad can be restyled independently via direct property editing or with a natural-language AI prompt. A vision model runs automatically on each capture to produce a clean semantic element tree. Gemini uses a two-phase recursive pipeline for higher accuracy on complex ads.
+Multiple captures accumulate in the editor. Each ad can be restyled independently via direct property editing or with a natural-language AI prompt. A vision model runs automatically on each capture.
+
+Two extraction modes live behind a settings toggle:
+- **Bounding boxes** (legacy): the model returns `AdElement[]` with absolute coords. Editable layers list. Box accuracy depends entirely on the model's spatial reasoning — found to be unreliable on small banner ads.
+- **HTML recreation** (experimental, PR A): the model rebuilds the ad as a self-contained HTML/CSS fragment. Mounted in a shadow DOM at native ad size; bounding boxes are derived from the rendered layout via `getBoundingClientRect()` so detection-overlay boxes are pixel-accurate by construction.
 
 ---
 
@@ -22,31 +26,30 @@ adMorph/
 ├── icon.png              # Extension icon (128×128)
 └── editor/               # React web editor (Vite + TS + Tailwind v4 + Zustand)
     └── src/
-        ├── types.ts                   # AdElement + CapturedAd interfaces (incl. originalElements)
-        ├── store.ts                   # Zustand store — ads, selection, undo, extraction state, screenshots
+        ├── types.ts                   # AdElement + CapturedAd (with optional html / originalHtml for HTML mode)
+        ├── store.ts                   # Zustand store — ads, selection, undo, extraction state, screenshots, setAdHtml
         ├── loader.ts                  # URL param + localStorage + postMessage listener + screenshot persistence
-        ├── App.tsx                    # Vision extraction pipeline, coordinate scaling, re-extract on demand
+        ├── App.tsx                    # runExtraction branches on extractionMode; bbox or html path
         └── components/
-            ├── Canvas.tsx             # Scrollable ad list, detection view toggle, bounding boxes, trash overlay
-            ├── CanvasElement.tsx      # Single rendered element — inline edit, image swap, ghost-free rendering
-            ├── Sidebar.tsx            # Properties panel, background layer, layers list, re-analyze button, JSON viewer
-            ├── AiRefiner.tsx          # NL prompt → multi-provider LLM → patched JSON
-            └── SettingsPanel/         # Provider selector, per-provider token usage, max tokens, health check
+            ├── Canvas.tsx             # Scrollable ad list, detection view, bbox or shadow-DOM render
+            ├── CanvasElement.tsx      # Single rendered element (bbox mode) — inline edit, image swap
+            ├── ShadowAdMount.tsx      # HTML mode: mount LLM HTML in shadow DOM, fill data-image-source="preserve" boxes from screenshot crop, report measured [data-role] rects
+            ├── Sidebar.tsx            # Properties panel, layers list, re-analyze button, JSON viewer (bbox mode)
+            ├── AiRefiner.tsx          # NL prompt → provider.refineAd → patched JSON (bbox mode)
+            └── SettingsPanel/         # Extraction mode toggle, provider selector, prompt picker, token usage
         └── lib/
             └── llm/
-                ├── provider.ts        # LLMProvider interface (extractAd, refineAd, healthCheck)
+                ├── provider.ts        # LLMProvider interface (extractAd, optional extractAdAsHtml, refineAd, healthCheck)
                 ├── factory.ts         # getProvider(settings) factory
-                ├── shared.ts          # Shared prompts (pct-based coords), pctToPixels, JSON parse helpers
+                ├── shared.ts          # EXTRACTION/SCENE/HTML_RECREATION prompts, pctToPixels, JSON parse helpers
                 └── providers/
-                    ├── ollama.ts      # Ollama — vision multimodal, num_predict:4096, format:json
                     ├── openai.ts      # OpenAI — image_url content type for vision
-                    ├── anthropic.ts   # Anthropic — base64 image source for vision
+                    ├── anthropic.ts   # Anthropic — tool-use elements path, prefill scene path, extractAdAsHtml via submit_ad_html tool
                     └── gemini.ts      # Gemini — recursive deep-dive pipeline, box_2d coords, token tracking
         └── lib/storage/
-            ├── settings.ts            # AppSettings (provider, models, maxTokens) — localStorage
+            ├── settings.ts            # AppSettings (provider, models, extractionMode, maxTokens) — localStorage
             └── tokenUsage.ts          # Per-operation token records + totals — localStorage (future: Supabase)
         └── hooks/
-            ├── useOllamaModels.ts     # Debounced /api/tags fetch — reachability + model list
             ├── useProviderHealth.ts   # Periodic health check for cloud providers
             └── useSettings.ts        # Load/save settings to localStorage
 ```
@@ -107,11 +110,12 @@ npm run dev      # starts at http://localhost:5173
 - Screenshots persisted to `localStorage` (`adMorphScreenshots`) — available for re-analysis after page refresh; deleted when the ad is trashed
 
 ### Vision Extraction (`App.tsx` + `lib/llm/`)
-- `runExtraction()` sends the cropped screenshot to the configured vision model (`extractAd()`)
-- All providers return **percentage-based coordinates** (0–100) which are converted to CSS pixels via `pctToPixels()` — robust to any image resizing the API does internally
-- Only applied if the model returns >1 element — single-element results are rejected and original DOM elements kept
-- `setAdElements()` always preserves `originalElements[0]` as the background layer — survives every re-extraction
-- During extraction the sidebar shows a centered spinner; a smaller blue banner appears at the top
+- `runExtraction()` reads `settings.extractionMode` and dispatches to either `provider.extractAd()` (bbox) or `provider.extractAdAsHtml()` (HTML)
+- **Bbox path**: providers return percentage-based coords (0–100) converted to CSS pixels via `pctToPixels()`. Only applied if the model returns >1 element. `setAdElements()` always preserves `originalElements[0]` as the background layer.
+- **HTML path**: provider returns one self-contained `<div class="ad-root">` fragment with absolute-positioned descendants and `data-role` attributes. `setAdHtml()` stores it on the ad. `Canvas.tsx` mounts it via `ShadowAdMount` in a shadow DOM at native ad size; detection view derives boxes from `getBoundingClientRect()` on `[data-role]` elements.
+- Anthropic uses **tool-use** for both element-mode (`submit_ad_elements`) and HTML-mode (`submit_ad_html`) — schema-validated input, no JSON parsing, no prefill hacks.
+- Scene mode (Anthropic) still uses the prefill `{` approach with the verbose scene-descriptor schema; tool-use migration deferred while the HTML approach is being validated.
+- During extraction the sidebar shows a spinner; the canvas shows the raw screenshot.
 
 ### Gemini: Recursive Deep-Dive Pipeline (`providers/gemini.ts`)
 - **Phase 1** — full screenshot sent to `geminiImageModel`; returns elements with `box_2d [ymin,xmin,ymax,xmax]` (0–1000 normalized) plus a `requires_deep_dive` flag for complex regions
@@ -135,11 +139,12 @@ npm run dev      # starts at http://localhost:5173
 - Text-specific fields (font size/weight/color) are hidden for container types
 
 ### Settings Panel
-- Provider selector: **Ollama** · **Anthropic** · **OpenAI** · **Gemini**
-- Gemini has separate **text model** and **image model** fields (free-text with datalist suggestions)
-- Per-provider token usage shown at the top of each provider's section
-- Global **token usage progress bar** + **Max tokens** field (plan-level limit, editable)
-- Ollama: URL field with live reachability dot; model dropdown from `/api/tags`
+- **Extraction Mode** toggle: bounding boxes (legacy) vs. HTML recreation (experimental)
+- **Extraction Prompt** picker (bbox mode only): Element Extractor vs. Scene Descriptor
+- Provider selector: **Anthropic** · **OpenAI** · **Gemini**
+- Anthropic is the default; Ollama support was removed when the Claude tool-use path landed
+- Gemini has separate **text model** and **image model** fields
+- Per-provider token usage; global token-usage progress bar; editable **Max tokens** field
 - Cloud providers: periodic health check dot
 
 ### Token Usage (`lib/storage/tokenUsage.ts`)
@@ -156,8 +161,9 @@ npm run dev      # starts at http://localhost:5173
 - Scales down only if narrower than the ad; otherwise renders at 1:1
 
 ### AI Refiner (`AiRefiner.tsx` + `lib/llm/`)
-- Multi-provider: **Ollama** (local, vision) · **Anthropic** · **OpenAI** · **Gemini**
-- Validates returned array has same length and identical IDs before applying
+- Providers: **Anthropic** · **OpenAI** · **Gemini**
+- Bbox mode only — refine on HTML recreations is not yet wired up
+- Validates the returned array has same length and identical IDs before applying
 - Undo restores the previous full `ads[]` snapshot
 
 ### Direct Manipulation
@@ -198,6 +204,8 @@ interface CapturedAd {
   elements: AdElement[];
   originalElements: AdElement[];  // frozen at capture, never overwritten
   capturedAt: number;
+  html?: string;          // HTML mode: LLM-generated <div class="ad-root">…</div> fragment
+  originalHtml?: string;  // HTML mode: snapshot at extraction time, used for revert
 }
 ```
 
@@ -212,5 +220,5 @@ interface CapturedAd {
 | Styling | Tailwind CSS v4 (`@tailwindcss/vite`) |
 | State | Zustand |
 | Icons | Lucide React |
-| AI | Ollama · Anthropic · OpenAI · Gemini (multi-provider, direct fetch) |
+| AI | Anthropic (default, with tool-use) · OpenAI · Gemini |
 | Persistence | `localStorage` (`adMorphAds`, `adMorphScreenshots`, `admorph_settings`, `admorph_token_usage`) |
