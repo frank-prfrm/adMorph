@@ -136,6 +136,23 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, screensh
   const adW = Math.round(rootW);
   const adH = Math.round(rootH);
 
+  // Diagnostic: compare canvas-reported ad size with the screenshot's natural
+  // dimensions. A mismatch means the ad is being stretched into a wrong-sized
+  // container (because the extension's viewRect disagrees with the DOM root
+  // element's bbox). Logged once per ad load.
+  useEffect(() => {
+    if (!screenshot) return;
+    const probe = new Image();
+    probe.onload = () => {
+      const ratioMatch = Math.abs((probe.naturalWidth / probe.naturalHeight) - (adW / adH)) < 0.02;
+      console.log(
+        `[AdBlock ${ad.id}] canvas size: ${adW}×${adH}, screenshot natural: ${probe.naturalWidth}×${probe.naturalHeight}` +
+        (ratioMatch ? '' : ' ⚠️ aspect-ratio mismatch — screenshot is being stretched')
+      );
+    };
+    probe.src = `data:image/jpeg;base64,${screenshot}`;
+  }, [ad.id, screenshot, adW, adH]);
+
   const scale = Math.min(availableWidth / adW, 1);
   const displayW = Math.round(adW * scale);
   const displayH = Math.round(adH * scale);
