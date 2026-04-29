@@ -4,42 +4,6 @@ import { SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, SCENE_EXTRACTION_PROMPT, parse
 import type { ExtractionPromptId } from '../shared';
 import type { LLMProvider, ExtractionResult } from '../provider';
 
-const MIN_LONG_SIDE = 1500;
-
-/**
- * Anthropic's vision docs recommend ≥1568px on the long side for best spatial
- * accuracy. Banner ads captured by the extension are typically 300×250 or
- * 728×90, far below that. Upscale via canvas before sending. No-op if the
- * image is already large enough.
- */
-async function ensureMinLongSide(base64Jpeg: string, minLongSide: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const longSide = Math.max(img.width, img.height);
-      if (longSide >= minLongSide) {
-        resolve(base64Jpeg);
-        return;
-      }
-      const scale = minLongSide / longSide;
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { resolve(base64Jpeg); return; }
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(img, 0, 0, w, h);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-      resolve(dataUrl.split(',')[1]);
-    };
-    img.onerror = () => reject(new Error('Failed to decode screenshot for upscale.'));
-    img.src = `data:image/jpeg;base64,${base64Jpeg}`;
-  });
-}
-
 /**
  * JSON Schema describing the tool input Claude must produce in elements mode.
  * Mirrors AdElement / AdElementStyles in types.ts. Anthropic's tool-use
@@ -54,7 +18,6 @@ const SUBMIT_ELEMENTS_TOOL = {
     properties: {
       elements: {
         type: 'array',
-        minItems: 3,
         items: {
           type: 'object',
           properties: {
@@ -97,11 +60,9 @@ export class AnthropicProvider implements LLMProvider {
 
   async extractAd(screenshot: string, adWidth: number, adHeight: number): Promise<ExtractionResult> {
     const useScene = this.config.promptId === 'scene';
-    const upscaled = await ensureMinLongSide(screenshot, MIN_LONG_SIDE);
-
     return useScene
-      ? this.extractScene(upscaled, adWidth, adHeight)
-      : this.extractElements(upscaled, adWidth, adHeight);
+      ? this.extractScene(screenshot, adWidth, adHeight)
+      : this.extractElements(screenshot, adWidth, adHeight);
   }
 
   // ── Element mode: tool-use, schema-enforced JSON ────────────────────────────
