@@ -91,6 +91,17 @@ Before generating JSON, silently perform three internal scans (do NOT output the
 2. Micro Sweep — scan for: texture patterns, material type, reflections + highlights, dust/scratches/wear, stitching/seams/imperfections, shadows (hard/soft, direction, gradation), OCR text and typography (exact styles, sizes, case).
 3. Relationship Sweep — map: spatial placement of all objects, orientation, occlusions, overlaps, hierarchy of visual attention, connections (e.g. "object A resting on object B").
 
+BOUNDING BOX CONVENTION (STRICT, applies to every object)
+- Image origin is the TOP-LEFT corner. x increases to the right, y increases downward.
+- bounding_box_percentage.x and .y refer to the TOP-LEFT corner of the box. They are NOT the center.
+- All four values (x, y, width, height) are normalized to 0.0–1.0 of the full image. Examples:
+    full image  → { x: 0.0,  y: 0.0,  width: 1.0,  height: 1.0 }
+    top-right quadrant → { x: 0.5,  y: 0.0,  width: 0.5,  height: 0.5 }
+    centered 20%×20% box → { x: 0.4,  y: 0.4,  width: 0.2,  height: 0.2 }
+- The box must tightly enclose the object's visible pixels — no extra padding, no large margins.
+- x + width must be ≤ 1.0. y + height must be ≤ 1.0. Boxes outside the image are invalid.
+- Be precise to two decimal places (e.g. 0.42, not 0.5) — pixel-accurate bounding boxes are required.
+
 OUTPUT FORMAT (STRICT)
 Produce one valid JSON object using the following schema. Expand arrays and objects as required so that all details in the image are captured.
 
@@ -139,6 +150,12 @@ Produce one valid JSON object using the following schema. Expand arrays and obje
         "relative_position": "Top-left/Center-right/etc",
         "bounding_box_percentage": { "x": 0.0, "y": 0.0, "width": 0.0, "height": 0.0 }
       },
+      // Bounding box convention (STRICT):
+      //   - Image origin is the top-left corner. x increases rightward, y increases downward.
+      //   - x and y refer to the TOP-LEFT corner of the box (NOT the center).
+      //   - All four values are normalized to 0.0–1.0 relative to the full image.
+      //   - The box must tightly enclose the object's visible pixels — no extra padding.
+      //   - x + width must be ≤ 1.0; y + height must be ≤ 1.0.
       "dimensions_relative": "Large/Medium/Small relative to frame",
       "distance_from_camera": "Near/Mid/Far",
       "pose_orientation": "Facing direction, tilt, rotation, posture data",
