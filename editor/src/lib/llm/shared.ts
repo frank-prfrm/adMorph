@@ -246,6 +246,27 @@ function extractJsonBlob(raw: string): string {
 }
 
 /**
+ * Pretty-print the parse failure: exact byte position, line/col, and a window
+ * of surrounding context with the offending byte marked. Returned string is
+ * suitable for logging *and* stuffing into an error message.
+ */
+function describeJsonParseError(text: string, err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  const posMatch = msg.match(/position\s+(\d+)/i);
+  if (!posMatch) return msg;
+  const pos = parseInt(posMatch[1], 10);
+  if (Number.isNaN(pos)) return msg;
+
+  const before = text.slice(0, pos);
+  const line = before.split('\n').length;
+  const col = pos - before.lastIndexOf('\n');
+  const winStart = Math.max(0, pos - 120);
+  const winEnd = Math.min(text.length, pos + 120);
+  const window = text.slice(winStart, pos) + '>>>HERE>>>' + text.slice(pos, winEnd);
+  return `${msg} (line ${line}, col ${col})\n…${window}…`;
+}
+
+/**
  * Parse the exhaustive scene JSON (returned by SCENE_EXTRACTION_PROMPT) into AdElement[].
  * Coordinates are in 0–1 bounding_box_percentage → multiply by 100 → feed to pctToPixels.
  */
@@ -254,9 +275,13 @@ export function parseSceneElements(raw: string, providerName: string): AdElement
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(cleaned) as Record<string, unknown>;
-  } catch {
-    console.error(`[${providerName}] scene JSON parse failed. Raw response (first 500 chars):`, raw.slice(0, 500), '...last 500:', raw.slice(-500));
-    throw new AiRefineError(`${providerName} returned invalid JSON for scene extraction. The response may have been truncated — check the console for the raw output.`);
+  } catch (e) {
+    const detail = describeJsonParseError(cleaned, e);
+    console.group(`[${providerName}] scene JSON parse failed`);
+    console.error(detail);
+    console.log('full raw response:', raw);
+    console.groupEnd();
+    throw new AiRefineError(`${providerName} returned invalid JSON for scene extraction. ${detail}`);
   }
 
   const objects = parsed.objects as Array<Record<string, unknown>> | undefined;
@@ -350,9 +375,13 @@ export function parseExtractedElements(raw: string, providerName: string): AdEle
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
-  } catch {
-    console.error(`[${providerName}] extraction JSON parse failed. Raw response (first 500 chars):`, raw.slice(0, 500), '...last 500:', raw.slice(-500));
-    throw new AiRefineError(`${providerName} returned invalid JSON during extraction.`);
+  } catch (e) {
+    const detail = describeJsonParseError(cleaned, e);
+    console.group(`[${providerName}] extraction JSON parse failed`);
+    console.error(detail);
+    console.log('full raw response:', raw);
+    console.groupEnd();
+    throw new AiRefineError(`${providerName} returned invalid JSON during extraction. ${detail}`);
   }
 
   const arr = (parsed as Record<string, unknown>).elements ?? parsed;
@@ -369,9 +398,13 @@ export function parseAdElements(raw: string, original: AdElement[], providerName
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
-  } catch {
-    console.error(`[${providerName}] refine JSON parse failed. Raw (first 500 chars):`, raw.slice(0, 500), '...last 500:', raw.slice(-500));
-    throw new AiRefineError(`${providerName} returned invalid JSON.`);
+  } catch (e) {
+    const detail = describeJsonParseError(cleaned, e);
+    console.group(`[${providerName}] refine JSON parse failed`);
+    console.error(detail);
+    console.log('full raw response:', raw);
+    console.groupEnd();
+    throw new AiRefineError(`${providerName} returned invalid JSON. ${detail}`);
   }
 
   const arr = (parsed as Record<string, unknown>).elements ?? parsed;
