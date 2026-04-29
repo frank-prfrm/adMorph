@@ -16,6 +16,7 @@ export default function App() {
   const setAds = useAdStore((s) => s.setAds);
   const addAd = useAdStore((s) => s.addAd);
   const setAdElements = useAdStore((s) => s.setAdElements);
+  const setAdHtml = useAdStore((s) => s.setAdHtml);
   const setAdRawJson = useAdStore((s) => s.setAdRawJson);
   const setAdExtracting = useAdStore((s) => s.setAdExtracting);
   const setAdExtractionError = useAdStore((s) => s.setAdExtractionError);
@@ -58,6 +59,17 @@ export default function App() {
     setAdExtracting(ad.id, true);
     try {
       const provider = getProvider(settings);
+
+      if (settings.extractionMode === 'html') {
+        if (!provider.extractAdAsHtml) {
+          throw new AiRefineError(`HTML mode is not supported by the ${settings.llm.provider} provider yet.`);
+        }
+        const { html, rawText } = await provider.extractAdAsHtml(screenshot, adW, adH);
+        setAdHtml(ad.id, html);
+        setAdRawJson(ad.id, rawText);
+        return;
+      }
+
       const { elements: extracted, rawJson } = await provider.extractAd(screenshot, adW, adH);
       setAdRawJson(ad.id, rawJson);
       // Only apply if the model returned more than just the root container —
@@ -74,7 +86,7 @@ export default function App() {
     } finally {
       setAdExtracting(ad.id, false);
     }
-  }, [settings, setAdElements, setAdRawJson, setAdExtracting, setAdExtractionError]);
+  }, [settings, setAdElements, setAdHtml, setAdRawJson, setAdExtracting, setAdExtractionError]);
 
   // ── Initial load ───────────────────────────────────────────────────────────
   useEffect(() => {

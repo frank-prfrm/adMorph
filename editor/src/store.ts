@@ -20,6 +20,7 @@ interface AdStore {
   updateElement: (adId: string, elementId: string, patch: Partial<AdElement>) => void;
   selectElement: (adId: string | null, elementId: string | null) => void;
   setAdElements: (adId: string, elements: AdElement[]) => void;
+  setAdHtml: (adId: string, html: string) => void;
   setAdRawJson: (adId: string, rawJson: string) => void;
   revertAd: (adId: string) => void;
   setAdExtracting: (adId: string, extracting: boolean) => void;
@@ -109,6 +110,15 @@ export const useAdStore = create<AdStore>((set) => ({
         ? [{ ...root, zIndex: 0 }, ...elements]
         : elements;
       const ads = state.ads.map((a) => (a.id === adId ? { ...a, elements: withBackground } : a));
+      saveStoredAds(ads);
+      return { previousAds: state.ads, ads };
+    }),
+
+  setAdHtml: (adId, html) =>
+    set((state) => {
+      const ads = state.ads.map((a) =>
+        a.id === adId ? { ...a, html, originalHtml: a.originalHtml ?? html } : a
+      );
       saveStoredAds(ads);
       return { previousAds: state.ads, ads };
     }),

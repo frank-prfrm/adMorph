@@ -1,5 +1,7 @@
 import type { ExtractionPromptId } from '../llm/shared';
 
+export type ExtractionMode = 'bbox' | 'html';
+
 export interface AppSettings {
   llm: {
     provider: 'anthropic' | 'openai' | 'gemini';
@@ -12,6 +14,13 @@ export interface AppSettings {
     geminiImageModel: string;
   };
   extractionPromptId: ExtractionPromptId;
+  /**
+   * Determines how the LLM analyzes the ad screenshot:
+   *   'bbox' — return AdElement[] with bounding-box coordinates (legacy)
+   *   'html' — return a self-contained HTML/CSS recreation; bounding boxes
+   *            are then computed from the rendered DOM via getBoundingClientRect.
+   */
+  extractionMode: ExtractionMode;
   maxTokens: number;
   supabaseEnabled: boolean;
 }
@@ -30,6 +39,7 @@ const DEFAULTS: AppSettings = {
     geminiImageModel: 'gemini-3.1-flash-image-preview',
   },
   extractionPromptId: 'elements',
+  extractionMode: 'bbox',
   maxTokens: 100000,
   supabaseEnabled: false,
 };

@@ -103,6 +103,42 @@ export function SettingsPanel({ settings, onSave, onClose }: Props) {
             )}
           </div>
 
+          {/* Extraction mode (bbox vs html recreation) */}
+          <div>
+            <label className="field-label mb-2 block">Extraction Mode</label>
+            <div className="flex flex-col gap-2">
+              {([
+                { id: 'bbox', label: 'Bounding boxes (legacy)', desc: 'LLM returns AdElement[] with absolute coords. Editable layers list.' },
+                { id: 'html', label: 'HTML recreation (experimental)', desc: 'LLM rebuilds the ad as HTML/CSS. Boxes computed from layout.' },
+              ] as const).map(({ id, label, desc }) => {
+                const isSelected = draft.extractionMode === id;
+                return (
+                  <label
+                    key={id}
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-950/30'
+                        : 'border-slate-700 hover:border-slate-600 hover:bg-slate-800/30'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="extractionMode"
+                      value={id}
+                      checked={isSelected}
+                      onChange={() => setDraft((d) => ({ ...d, extractionMode: id }))}
+                      className="accent-blue-500 mt-0.5 shrink-0"
+                    />
+                    <div>
+                      <div className={`text-sm font-medium ${isSelected ? 'text-blue-300' : 'text-slate-300'}`}>{label}</div>
+                      <div className="text-xs text-slate-500 mt-0.5 leading-relaxed">{desc}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Provider selector */}
           <div>
             <label className="field-label mb-2 block">Provider</label>

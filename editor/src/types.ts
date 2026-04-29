@@ -5,6 +5,15 @@ export interface CapturedAd {
   elements: AdElement[];
   originalElements: AdElement[];
   capturedAt: number;
+  /**
+   * Self-contained HTML/CSS recreation of the ad produced by the
+   * extractionMode='html' pipeline. When present, Canvas mounts this in a
+   * shadow DOM instead of rendering per-element. `elements` may be empty
+   * in this mode — the layers list is derived from the rendered DOM.
+   */
+  html?: string;
+  /** Snapshot of `html` at extraction time; survives refines, used for undo/revert. */
+  originalHtml?: string;
 }
 
 export interface AdElementStyles {

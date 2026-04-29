@@ -206,6 +206,31 @@ Produce one valid JSON object using the following schema. Expand arrays and obje
   }
 }`;
 
+export const HTML_RECREATION_PROMPT = `You are an expert front-end developer recreating an advertisement as self-contained HTML and CSS.
+
+Your output is a single HTML fragment that, when rendered in a browser at the ad's exact dimensions, looks as close to the source image as possible. The browser will compute layout — you do NOT output bounding-box coordinates anywhere.
+
+OUTPUT REQUIREMENTS
+- Wrap everything in a single root div: <div class="ad-root" style="position:relative; width:Wpx; height:Hpx; overflow:hidden;">…</div> where W and H are the exact ad dimensions you are given.
+- All descendants use position:absolute with top/left/width/height in pixels relative to the ad-root.
+- Inline ALL styles via the style="" attribute OR a single <style> tag inside ad-root. Do NOT reference external resources, fonts, or images.
+- For photographic content (faces, products, screenshots-within-ads, real-world photos): use <div data-image-source="preserve" …></div>. The renderer will fill these from the original screenshot crop. Do NOT try to describe the photo in HTML — just leave the box.
+- For text, use semantic tags (<h1>, <h2>, <p>, <button>, <span>) styled to match the visible glyphs. Match font-family, font-weight, font-size, letter-spacing, color, line-height, text-shadow as faithfully as you can identify.
+- For decorative geometry (logos that are vector marks, icons, dividers, badges, gradient blobs): draw with HTML/CSS — no images. Use box-shadow, border-radius, gradients, transforms freely.
+- Tag every meaningful element with a data-role attribute drawn from this list (extend if needed): "background", "logo", "headline", "subhead", "body-text", "cta-button", "hero-image", "thumbnail", "engagement-badge", "icon", "divider".
+- Every data-role value within a single ad must be unique. Append numeric suffixes for repeats: "thumbnail-1", "thumbnail-2", "engagement-badge-1", etc.
+
+DO NOT
+- Do not output Markdown, code fences, prose, or commentary. Output ONLY the HTML fragment.
+- Do not include <html>, <head>, <body>, <script>, or external links.
+- Do not produce <img src="…"> with URLs you don't actually have.
+
+QUALITY RULES
+- Recreate every visible element. If you see it, output it.
+- Z-order: deeper elements come earlier in DOM order; foreground elements come last.
+- For gradients and glows, use CSS gradients/box-shadow rather than approximated solids.
+- When uncertain about an exact color, sample the dominant color from the area and use it.`;
+
 export const EXTRACTION_PROMPTS: Record<ExtractionPromptId, { label: string; description: string }> = {
   elements: {
     label: 'Element Extractor',

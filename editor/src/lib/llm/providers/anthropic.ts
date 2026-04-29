@@ -1,8 +1,8 @@
 import type { AdElement } from '../../../types';
 import { AiRefineError } from '../../../utils/openai';
-import { SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, SCENE_EXTRACTION_PROMPT, parseAdElements, parseSceneElements, pctToPixels } from '../shared';
+import { SYSTEM_PROMPT, EXTRACTION_SYSTEM_PROMPT, SCENE_EXTRACTION_PROMPT, HTML_RECREATION_PROMPT, parseAdElements, parseSceneElements, pctToPixels } from '../shared';
 import type { ExtractionPromptId } from '../shared';
-import type { LLMProvider, ExtractionResult } from '../provider';
+import type { LLMProvider, ExtractionResult, HtmlExtractionResult } from '../provider';
 
 /**
  * JSON Schema describing the tool input Claude must produce in elements mode.
@@ -51,7 +51,22 @@ const SUBMIT_ELEMENTS_TOOL = {
   },
 };
 
-interface ToolUseBlock { type: 'tool_use'; name: string; input: { elements?: AdElement[] } }
+const SUBMIT_HTML_TOOL = {
+  name: 'submit_ad_html',
+  description: 'Submit the recreated ad as a single self-contained HTML fragment.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      html: {
+        type: 'string',
+        description: 'A single <div class="ad-root" …> fragment with absolute-positioned descendants and inline styles. No <html>/<head>/<body>, no external resources.',
+      },
+    },
+    required: ['html'],
+  },
+};
+
+interface ToolUseBlock { type: 'tool_use'; name: string; input: { elements?: AdElement[]; html?: string } }
 interface TextBlock { type: 'text'; text: string }
 type ContentBlock = ToolUseBlock | TextBlock;
 
@@ -63,6 +78,66 @@ export class AnthropicProvider implements LLMProvider {
     return useScene
       ? this.extractScene(screenshot, adWidth, adHeight)
       : this.extractElements(screenshot, adWidth, adHeight);
+  }
+
+  // ── HTML mode: tool-use with a single 'html' string parameter ───────────────
+  async extractAdAsHtml(screenshot: string, adWidth: number, adHeight: number): Promise<HtmlExtractionResult> {
+    const userText = `Recreate this advertisement as a self-contained HTML fragment. The ad-root must be exactly ${adWidth}px × ${adHeight}px. Call submit_ad_html with the result.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.config.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: this.config.model,
+        max_tokens: 16384,
+        system: HTML_RECREATION_PROMPT,
+        tools: [SUBMIT_HTML_TOOL],
+        tool_choice: { type: 'tool', name: SUBMIT_HTML_TOOL.name },
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: screenshot } },
+              { type: 'text', text: userText },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new AiRefineError(`Anthropic HTML extraction error ${response.status}: ${err}`);
+    }
+
+    const data = await response.json();
+    const blocks: ContentBlock[] = data.content ?? [];
+    const toolUse = blocks.find((b): b is ToolUseBlock => b.type === 'tool_use' && b.name === SUBMIT_HTML_TOOL.name);
+
+    console.group('[Anthropic extractAdAsHtml] response');
+    console.log('stop_reason:', data.stop_reason);
+    console.log('usage:', data.usage);
+    console.log('html length (chars):', toolUse?.input.html?.length ?? 0);
+    console.log('html (first 600):', toolUse?.input.html?.slice(0, 600));
+    console.groupEnd();
+
+    if (!toolUse || typeof toolUse.input.html !== 'string') {
+      const textBlock = blocks.find((b): b is TextBlock => b.type === 'text');
+      throw new AiRefineError(
+        `Anthropic did not call submit_ad_html. ${textBlock?.text?.slice(0, 300) ?? 'no text response'}`
+      );
+    }
+
+    if (data.stop_reason === 'max_tokens') {
+      throw new AiRefineError('Anthropic HTML response truncated (max_tokens=16384 reached).');
+    }
+
+    return { html: toolUse.input.html, rawText: toolUse.input.html };
   }
 
   // ── Element mode: tool-use, schema-enforced JSON ────────────────────────────

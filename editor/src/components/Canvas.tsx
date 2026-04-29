@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Layers, MousePointer2, Trash2 } from 'lucide-react';
 import { useAdStore } from '../store';
 import { CanvasElement } from './CanvasElement';
+import { ShadowAdMount, type RoleBox } from './ShadowAdMount';
 import type { AdElement, AdElementStyles, CapturedAd } from '../types';
 
 export function Canvas() {
@@ -160,6 +161,10 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, screensh
   const sorted = [...ad.elements].sort((a, b) => a.zIndex - b.zIndex);
   const selectedEl = selectedElementId ? ad.elements.find((e) => e.id === selectedElementId) : null;
 
+  const [roleBoxes, setRoleBoxes] = useState<RoleBox[]>([]);
+  const handleRolesMeasured = useCallback((boxes: RoleBox[]) => setRoleBoxes(boxes), []);
+  const isHtmlMode = !!ad.html;
+
   const handleStyleChange = (elementId: string, key: keyof AdElementStyles, value: string) => {
     updateElement(ad.id, elementId, { styles: { ...ad.elements.find(e => e.id === elementId)!.styles, [key]: value } });
   };
@@ -203,8 +208,31 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, screensh
               draggable={false}
               style={{ width: '100%', height: '100%', display: 'block', userSelect: 'none' }}
             />
+          ) : isHtmlMode ? (
+            /* HTML mode: render LLM-recreated HTML in a shadow DOM. */
+            <>
+              <ShadowAdMount
+                html={ad.html!}
+                width={adW}
+                height={adH}
+                screenshotBase64={screenshot}
+                onRolesMeasured={handleRolesMeasured}
+              />
+              {showDetection && screenshot && (
+                <>
+                  <img
+                    src={`data:image/jpeg;base64,${screenshot}`}
+                    draggable={false}
+                    style={{ width: '100%', height: '100%', display: 'block', userSelect: 'none', position: 'absolute', inset: 0 }}
+                  />
+                  {roleBoxes.map((b, i) => (
+                    <RoleOverlay key={`${b.role}-${i}`} box={b} />
+                  ))}
+                </>
+              )}
+            </>
           ) : showDetection && screenshot ? (
-            /* Detection view: screenshot + bounding boxes */
+            /* Detection view (bbox mode): screenshot + bounding boxes */
             <>
               <img
                 src={`data:image/jpeg;base64,${screenshot}`}
@@ -307,6 +335,27 @@ function AdBlock({ ad, availableWidth, selectedElementId, isExtracting, screensh
         <Trash2 size={15} />
       </button>
     </div>
+  );
+}
+
+// ── Role overlay (HTML mode) ─────────────────────────────────────────────────
+
+function RoleOverlay({ box }: { box: RoleBox }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: box.rect.left,
+        top: box.rect.top,
+        width: box.rect.width,
+        height: box.rect.height,
+        border: '2px solid #3b82f6cc',
+        backgroundColor: '#3b82f61a',
+        boxSizing: 'border-box',
+        pointerEvents: 'none',
+      }}
+      title={box.role}
+    />
   );
 }
 
